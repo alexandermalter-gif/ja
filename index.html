@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Katzen-Sudoku</title>
+<meta name="description" content="Logikrätsel mit 100 Leveln: Setze je eine Katze pro Farbe, Zeile und Spalte – ohne dass sich Katzen berühren.">
+<meta name="theme-color" content="#f6f1ef">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- APP:START -->
+<div id="app">
+  <section id="screen-menu" class="screen">
+    <header class="menu-header">
+      <div class="brand">
+        <span id="logo-cat" class="logo"></span>
+        <div>
+          <h1>Katzen-Sudoku</h1>
+          <p>100 Rätsel · eine Katze pro Farbe, Zeile und Spalte</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-rules" class="round-btn small" aria-label="Spielregeln"></button>
+        <button class="round-btn small btn-settings" aria-label="Einstellungen"></button>
+      </div>
+    </header>
+    <div class="menu-stats">
+      <div><small>Punkte</small><b id="menu-points">0</b></div>
+      <div><small>Sterne</small><b id="menu-stars">0</b></div>
+      <div><small>Gelöst</small><b id="menu-solved">0</b></div>
+    </div>
+    <button id="btn-continue" class="btn btn-primary btn-big"></button>
+    <div id="level-groups"></div>
+  </section>
+
+  <section id="screen-game" class="screen hidden">
+    <header class="game-header">
+      <button id="btn-back" class="round-btn" aria-label="Zurück zur Levelauswahl"></button>
+      <div class="hud">
+        <div class="stat"><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
+        <div class="stat"><span class="label">Punkte</span><span class="value" id="hud-points">0</span></div>
+        <div class="stat"><span class="label flame" id="hud-flame"></span><span class="value" id="hud-diff">Leicht</span></div>
+      </div>
+      <button class="round-btn btn-settings" aria-label="Einstellungen"></button>
+    </header>
+
+    <div class="status-row">
+      <div class="pill cat-bar" id="cat-bar" aria-label="Farben mit Katze"></div>
+      <div class="pill fish-bar" id="fish-bar"></div>
+    </div>
+
+    <button class="rules-card" id="rules-card" aria-label="Spielregeln anzeigen">
+      <span class="rule" id="rule-1"><span class="ico"></span><span>1 Katze pro Farbe</span></span>
+      <span class="rule" id="rule-2"><span class="ico"></span><span>1 Katze pro Zeile und Spalte</span></span>
+      <span class="rule" id="rule-3"><span class="ico"></span><span>Katzen dürfen sich nicht berühren</span></span>
+    </button>
+
+    <div class="board-card"><div id="board"></div></div>
+
+    <div class="below-board">
+      <button id="btn-undo" class="chip-btn"><span>Rückgängig</span></button>
+      <span id="timer" class="timer" aria-label="Spielzeit">00:00</span>
+      <button id="btn-restart" class="chip-btn"><span>Leeren</span></button>
+    </div>
+
+    <div class="tools">
+      <button id="tool-joker" class="tool" aria-label="Joker: setzt eine richtige Katze">
+        <span class="ico"></span><span class="badge">1</span><span class="tool-label">Joker</span>
+      </button>
+      <button id="tool-hint" class="tool" aria-label="Hinweis: erklärt den nächsten Schritt">
+        <span class="ico"></span><span class="badge">3</span><span class="tool-label">Hinweis</span>
+      </button>
+      <button id="tool-mouse" class="tool" aria-label="Maus: markiert alle blockierten Felder">
+        <span class="ico"></span><span class="badge">∞</span><span class="tool-label">Maus</span>
+      </button>
+    </div>
+
+    <div id="hint-bubble" class="hint-bubble hidden" role="status" aria-live="polite">
+      <p></p>
+      <div class="hint-actions">
+        <button id="hint-close" class="btn btn-secondary">Verstanden</button>
+        <button id="hint-apply" class="btn btn-primary">Ausführen</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="modal-root"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<!-- APP:END -->
+<script src="dist/game.js"></script>
+</body>
+</html>

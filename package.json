@@ -1,0 +1,19 @@
+{
+  "name": "katzen-sudoku",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Katzen-Sudoku – browserbasiertes Logikrätsel mit three.js (1 Katze pro Farbe, Zeile und Spalte, Katzen dürfen sich nicht berühren).",
+  "type": "module",
+  "scripts": {
+    "generate": "node tools/generate-levels.mjs",
+    "build": "node tools/build.mjs",
+    "test": "node tools/verify-levels.mjs && node tools/test-hints.mjs",
+    "serve": "npx --yes http-server -c-1 -p 8080 ."
+  },
+  "dependencies": {
+    "three": "0.184.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}
