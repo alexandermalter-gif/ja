@@ -8,6 +8,8 @@ const TILE = 1.0;
 const TILE_H = 0.22;
 const TILT = 0.2; // Kameraneigung (rad) – zeigt die Kachelkanten
 const MARGIN = 0.12;
+// Katzen leicht nach unten versetzen: Ohren + Kameraneigung lassen sie sonst zu hoch wirken.
+const CAT_Y = -0.1;
 
 import { MARK_EMPTY, MARK_X, MARK_CAT, MARK_AUTO_X } from './marks.js';
 
@@ -17,6 +19,12 @@ const easeOutBack = (t) => {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 };
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+// sanftes Überschwingen (weniger als easeOutBack)
+const easeOutSoft = (t) => {
+  const c1 = 0.9;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+};
 
 export class Board3D {
   constructor(container, callbacks) {
@@ -218,7 +226,7 @@ export class Board3D {
       const d = this.drag;
       this.drag = null;
       if (d.moved) this.cb.onDragEnd?.();
-      else if (!cancelled) this.cb.onTap?.(d.start);
+      else if (!cancelled) this.cb.onTap?.(d.start, ev.timeStamp);
     };
     el.addEventListener('pointerup', (ev) => end(ev, false));
     el.addEventListener('pointercancel', (ev) => end(ev, true));
@@ -226,12 +234,14 @@ export class Board3D {
     el.addEventListener('contextmenu', (ev) => ev.preventDefault());
   }
 
-  pressCell(i) {
+  /** Kachel kurz eindrücken (strength 1 = Tippen, kleiner = sanfte Welle). */
+  pressCell(i, strength = 1, delay = 0) {
     const cell = this.cells[i];
     if (!cell) return;
-    this.tween(`press${i}`, 260, (p) => {
-      cell.press = Math.sin(p * Math.PI) * (1 - p * 0.3);
-    }, () => { cell.press = 0; });
+    const dur = strength < 1 ? 420 : 260;
+    this.tween(`press${i}`, dur, (p) => {
+      cell.press = Math.sin(p * Math.PI) * (1 - p * 0.3) * strength;
+    }, () => { cell.press = 0; }, delay);
   }
 
   // ---------------------------------------------------------------------------
@@ -243,7 +253,11 @@ export class Board3D {
     marks.forEach((m, i) => this.setCell(i, m, animate));
   }
 
-  setCell(i, state, animate = true) {
+  /**
+   * Setzt den Zustand eines Feldes.
+   * delay > 0: X erscheint verzögert und „weich“ (für die Welle nach dem Setzen einer Katze).
+   */
+  setCell(i, state, animate = true, delay = 0) {
     const cell = this.cells[i];
     if (!cell || cell.state === state) return;
     const prev = cell.state;
@@ -251,7 +265,7 @@ export class Board3D {
     const isX = state === MARK_X || state === MARK_AUTO_X;
     const wasX = prev === MARK_X || prev === MARK_AUTO_X;
 
-    if (wasX && !isX) this.removeX(i, animate);
+    if (wasX && !isX) this.removeX(i, animate, delay);
     if (prev === MARK_CAT && state !== MARK_CAT) this.removeCat(i, animate);
 
     if (isX) {
@@ -261,7 +275,20 @@ export class Board3D {
         if (animate) {
           const obj = cell.x;
           obj.scale.setScalar(0.001);
-          this.tween(`x${i}`, 220, (p) => obj.scale.setScalar(Math.max(0.001, easeOutBack(p))));
+          if (delay > 0) {
+            // weiches Einschweben: von oben, leicht gedreht, sanftes Überschwingen
+            obj.position.z = 0.22;
+            obj.rotation.z = -0.7;
+            this.tween(`x${i}`, 460, (p) => {
+              const e = easeOutSoft(p);
+              obj.scale.setScalar(Math.max(0.001, e));
+              obj.rotation.z = -0.7 * (1 - easeOutCubic(p));
+              obj.position.z = 0.22 * (1 - easeOutCubic(p));
+            }, null, delay);
+            this.pressCell(i, 0.35, delay);
+          } else {
+            this.tween(`x${i}`, 220, (p) => obj.scale.setScalar(Math.max(0.001, easeOutBack(p))));
+          }
         }
       } else {
         for (const b of cell.x.children) b.material = state === MARK_AUTO_X ? this.xAutoMat : this.xMat;
@@ -269,7 +296,7 @@ export class Board3D {
     }
     if (state === MARK_CAT && !cell.cat) {
       const cat = createCat();
-      cat.position.z = 0.3;
+      cat.position.set(0, CAT_Y, 0.3);
       cell.cat = cat;
       cell.holder.add(cat);
       if (animate) {
@@ -293,14 +320,21 @@ export class Board3D {
     return g;
   }
 
-  removeX(i, animate) {
+  removeX(i, animate, delay = 0) {
     const cell = this.cells[i];
     const obj = cell.x;
     if (!obj) return;
     cell.x = null;
     this.tweens.delete(`x${i}`);
     if (!animate) { cell.holder.remove(obj); return; }
-    this.tween(`xout${i}`, 150, (p) => obj.scale.setScalar(Math.max(0.001, 1 - p)), () => cell.holder.remove(obj));
+    const s0 = obj.scale.x;
+    const r0 = obj.rotation.z;
+    const dur = delay > 0 ? 280 : 160;
+    this.tween(`xout${i}`, dur, (p) => {
+      const e = easeOutCubic(p);
+      obj.scale.setScalar(Math.max(0.001, s0 * (1 - e)));
+      if (delay > 0) obj.rotation.z = r0 + 0.6 * e;
+    }, () => cell.holder.remove(obj), delay);
   }
 
   removeCat(i, animate) {
@@ -310,9 +344,11 @@ export class Board3D {
     cell.cat = null;
     this.tweens.delete(`cat${i}`);
     if (!animate) { cell.holder.remove(obj); return; }
+    const s0 = obj.scale.x;
+    const z0 = obj.position.z;
     this.tween(`catout${i}`, 200, (p) => {
-      obj.scale.setScalar(Math.max(0.001, 1 - easeOutCubic(p)));
-      obj.position.z = 0.3 + p * 0.3;
+      obj.scale.setScalar(Math.max(0.001, s0 * (1 - easeOutCubic(p))));
+      obj.position.z = z0 + p * 0.3;
     }, () => cell.holder.remove(obj));
   }
 

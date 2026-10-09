@@ -21,9 +21,11 @@ Jedes Level hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösb
 
 ### Bedienung
 
-- **1× tippen** → X (hier ist sicher keine Katze)
-- **2× tippen** → Katze
-- **3× tippen** → Feld wieder leer
+- **1× tippen** → X (hier ist sicher keine Katze), **nochmal tippen** → X wieder weg
+- **Doppelt tippen** → Katze; ein Tippen auf eine Katze nimmt sie wieder weg
+- **Automatische X:** Sobald eine Katze sitzt, bekommen alle von ihr blockierten Felder (Zeile, Spalte, Farbe,
+  Nachbarfelder) von selbst ein X – als Welle, die sich von der Katze aus ausbreitet.
+  Wird die Katze entfernt, verschwinden diese X wieder.
 - **Über Felder ziehen** → mehrere X auf einmal setzen (bzw. löschen, wenn man auf einem X beginnt)
 - **Strg/⌘ + Z** → Rückgängig
 
@@ -34,14 +36,14 @@ Jedes Level hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösb
 - **Joker (Katze, 1× pro Level):** setzt eine richtige Katze.
 - **Hinweis (Glühbirne, 3× pro Level):** erklärt den nächsten logischen Schritt in Worten, hebt die betroffenen Felder hervor
   und kann ihn auf Wunsch ausführen. Erkennt auch falsch gesetzte X und Katzen.
-- **Maus (unbegrenzt):** markiert alle Felder, die von deinen Katzen blockiert werden.
+- **Maus (unbegrenzt):** markiert alle Felder, die von deinen Katzen blockiert werden (z. B. nachdem du automatische X gelöscht hast).
 - **Sterne:** 3 ★ ohne Fehler und ohne Helfer, 2 ★ bei höchstens zwei Patzern, sonst 1 ★. Mehr Sterne geben mehr Punkte.
 
 Fortschritt, Punkte und das gerade laufende Level werden im Browser gespeichert (localStorage).
 
 ### Einstellungen
 
-Töne · Fische an/aus · Automatische X beim Setzen einer Katze · Konflikte anzeigen ·
+Töne · Fische an/aus · Konflikte anzeigen ·
 Farbgrenzen (dunkle Linien zwischen Farbflächen, hilfreich bei Farbschwäche) · Alle Level freischalten · Fortschritt löschen
 
 ## Level und Schwierigkeit

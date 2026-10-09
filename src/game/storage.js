@@ -9,7 +9,6 @@ const DEFAULTS = {
   settings: {
     sound: true,
     lives: true,
-    autoX: false,
     conflicts: true,
     borders: false,
     unlockAll: false,

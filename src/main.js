@@ -20,6 +20,8 @@ const FISH = 3;
 const JOKERS_PER_LEVEL = 1;
 const HINTS_PER_LEVEL = 3;
 const STAR_MULT = [0, 1, 1.25, 1.6];
+const DOUBLE_TAP_MS = 380;
+const WAVE_MS = 45; // Verzögerung der X-Welle pro Feld Abstand
 
 const $ = (sel) => document.querySelector(sel);
 const isX = (m) => m === MARK_X || m === MARK_AUTO_X;
@@ -28,6 +30,7 @@ let data = loadData();
 let board = null;
 let game = null;
 let timerHandle = 0;
+let lastTap = { cell: -1, time: 0, before: MARK_EMPTY };
 
 setSoundEnabled(data.settings.sound);
 
@@ -120,7 +123,8 @@ function rulesHtml() {
       <div class="rule-row">${I.miniGrid('xxxxcxxxx')}<p><b>Katzen dürfen sich nicht berühren</b> – auch nicht schräg.</p></div>
     </div>
     <div class="controls-help">
-      <p><b>Bedienung:</b> Einmal tippen setzt ein <b>X</b> (hier ist keine Katze), zweimal tippen setzt eine <b>Katze</b>, ein drittes Mal leert das Feld. Mit gedrücktem Finger über Felder ziehen markiert mehrere X auf einmal.</p>
+      <p><b>Bedienung:</b> Einmal tippen setzt ein <b>X</b> (hier ist keine Katze), nochmal tippen entfernt es wieder. <b>Doppelt tippen</b> setzt eine <b>Katze</b>, ein Tippen auf die Katze nimmt sie weg. Mit gedrücktem Finger über Felder ziehen markiert mehrere X auf einmal.</p>
+      <p><b>Automatische X:</b> Sobald eine Katze sitzt, bekommen alle Felder, die sie blockiert, von selbst ein X.</p>
       <p><b>Fische:</b> Eine Katze an der falschen Stelle kostet einen Fisch. Sind alle drei weg, beginnt das Level von vorn (abschaltbar in den Einstellungen).</p>
       <p><b>Helfer:</b> <span class="inline-ico">${I.ICON_CAT_FACE}</span> setzt eine richtige Katze, <span class="inline-ico">${I.ICON_BULB}</span> erklärt den nächsten logischen Schritt, <span class="inline-ico">${I.ICON_MOUSE}</span> markiert alle Felder, die deine Katzen blockieren.</p>
     </div>`;
@@ -150,7 +154,6 @@ function showSettings() {
     body: `
       ${toggle('sound', 'Töne', 'Soundeffekte beim Spielen')}
       ${toggle('lives', 'Fische (Leben)', 'Falsche Katzen kosten einen Fisch')}
-      ${toggle('autoX', 'Automatische X', 'Beim Setzen einer Katze blockierte Felder markieren')}
       ${toggle('conflicts', 'Konflikte zeigen', 'Ohne Fische: sich störende Katzen rot markieren')}
       ${toggle('borders', 'Farbgrenzen', 'Dunkle Linien zwischen den Farbflächen (hilft bei Farbschwäche)')}
       ${toggle('unlockAll', 'Alle Level freischalten', 'Jedes Level sofort spielbar')}
@@ -457,23 +460,41 @@ function attackedByCat(i, ignore = -1) {
   return false;
 }
 
-/** Markiert alle von Katzen blockierten Felder mit (automatischen) X. */
+const cellDist = (a, b) => {
+  const n = game.level.n;
+  return Math.hypot(Math.floor(a / n) - Math.floor(b / n), (a % n) - (b % n));
+};
+
+/**
+ * Markiert alle von Katzen blockierten Felder mit (automatischen) X –
+ * als Welle, die sich von der jeweiligen Katze aus ausbreitet.
+ */
 function autoMark(onlyFrom = null) {
   const { geo, marks } = game;
-  const cells = [];
   const sources = onlyFrom !== null ? [onlyFrom] : [...marks.keys()].filter((i) => marks[i] === MARK_CAT);
-  for (const s of sources) for (const a of geo.attacks[s]) if (marks[a] === MARK_EMPTY && !cells.includes(a)) cells.push(a);
-  cells.forEach((c, k) => {
+  const delays = new Map();
+  for (const s of sources) {
+    for (const a of geo.attacks[s]) {
+      if (marks[a] !== MARK_EMPTY) continue;
+      const d = 90 + (cellDist(s, a) - 1) * WAVE_MS;
+      delays.set(a, Math.min(delays.get(a) ?? Infinity, d));
+    }
+  }
+  for (const [c, d] of delays) {
     game.marks[c] = MARK_AUTO_X;
-    setTimeout(() => { if (game && game.marks[c] === MARK_AUTO_X) board.setCell(c, MARK_AUTO_X); }, k * 18);
-  });
-  return cells.length;
+    board.setCell(c, MARK_AUTO_X, true, d);
+  }
+  if (delays.size) sfx.sweep();
+  return delays.size;
 }
 
-/** Entfernt automatische X, die keine Katze mehr blockiert. */
-function cleanupAutoX() {
+/** Entfernt automatische X, die keine Katze mehr blockiert (Welle zurück zur Katze). */
+function cleanupAutoX(origin = -1) {
   game.marks.forEach((m, i) => {
-    if (m === MARK_AUTO_X && !attackedByCat(i)) setMark(i, MARK_EMPTY);
+    if (m !== MARK_AUTO_X || attackedByCat(i)) return;
+    game.marks[i] = MARK_EMPTY;
+    const d = origin >= 0 ? Math.max(0, 260 - cellDist(origin, i) * 25) : 0;
+    board.setCell(i, MARK_EMPTY, true, d);
   });
 }
 
@@ -502,25 +523,43 @@ function placeCat(i, byHelper = false) {
   }
   setMark(i, MARK_CAT);
   sfx.cat();
-  if (data.settings.autoX) autoMark(i);
+  autoMark(i);
 }
 
 function removeCat(i) {
   setMark(i, MARK_EMPTY);
   sfx.clear();
-  cleanupAutoX();
+  cleanupAutoX(i);
 }
 
-function handleTap(i) {
+/**
+ * Tippen: leer → X, X → leer, Katze → weg.
+ * Doppeltippen: Katze setzen (der erste Tipp wird dabei ersetzt).
+ */
+function handleTap(i, timeStamp) {
   if (!game || game.finished) return;
   hideHintBubble();
+  // Zeitpunkt des Ereignisses (nicht der Verarbeitung) – robust auch auf langsamen Geräten
+  const now = timeStamp ?? performance.now();
+  if (lastTap.cell === i && now - lastTap.time < DOUBLE_TAP_MS) {
+    const before = lastTap.before;
+    lastTap.cell = -1;
+    // Doppeltippen auf eine Katze: der erste Tipp hat sie schon entfernt.
+    if (before !== MARK_CAT) {
+      placeCat(i);
+      afterChange();
+    }
+    return;
+  }
   const cur = game.marks[i];
+  lastTap = { cell: i, time: now, before: cur };
   snapshot();
   if (cur === MARK_EMPTY) {
     setMark(i, MARK_X);
     sfx.mark();
   } else if (isX(cur)) {
-    placeCat(i);
+    setMark(i, MARK_EMPTY);
+    sfx.clear();
   } else {
     removeCat(i);
   }
@@ -530,6 +569,7 @@ function handleTap(i) {
 function handleDragStart(start) {
   if (!game || game.finished) return;
   hideHintBubble();
+  lastTap.cell = -1;
   snapshot();
   game.dragMode = isX(game.marks[start]) ? 'erase' : 'mark';
   applyDrag(start);
@@ -739,6 +779,7 @@ function hideHintBubble() {
 function undo() {
   if (!game || game.finished || !game.history.length) return;
   hideHintBubble();
+  lastTap.cell = -1;
   const prev = game.history.pop();
   game.marks = prev;
   board.setMarks(prev);

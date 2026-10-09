@@ -54,6 +54,10 @@ export const sfx = {
     tone({ f1: 880, dur: 0.1, gain: 0.07 });
     tone({ f1: 1320, dur: 0.16, gain: 0.06, delay: 0.08 });
   },
+  sweep: () => {
+    // leises Glitzern, während die X-Welle läuft
+    [0, 1, 2, 3, 4].forEach((k) => tone({ f1: 1250 + k * 160, f2: 1450 + k * 160, dur: 0.07, gain: 0.018, delay: 0.1 + k * 0.06 }));
+  },
   mouse: () => {
     for (let i = 0; i < 4; i++) tone({ f1: 1500 + i * 120, f2: 1800 + i * 120, dur: 0.05, gain: 0.04, delay: i * 0.05 });
   },
