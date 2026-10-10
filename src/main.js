@@ -26,6 +26,7 @@ const STAR_MULT = [0, 1, 1.25, 1.6];
 const DOUBLE_TAP_MS = 380;
 const WAVE_MS = 45; // Verzögerung der X-Welle pro Feld Abstand
 const HISTORY_MAX = 60;
+const DAILY_CACHE_VERSION = 2;
 
 const $ = (sel) => document.querySelector(sel);
 const isX = (m) => m === MARK_X || m === MARK_AUTO_X;
@@ -575,7 +576,8 @@ function startLevel(id, opts = {}) {
 
 async function startDaily() {
   const key = today();
-  let level = data.daily.cache?.key === key ? data.daily.cache.level : null;
+  // v: Version der Farbverteilung – ältere Zwischenspeicher werden neu erzeugt (gleiches Rätsel)
+  let level = data.daily.cache?.key === key && data.daily.cache.v === DAILY_CACHE_VERSION ? data.daily.cache.level : null;
   if (!level) {
     const loader = $('#loader');
     loader.classList.remove('hidden');
@@ -584,7 +586,7 @@ async function startDaily() {
     await new Promise((r) => requestAnimationFrame(() => r()));
     try {
       level = await generateDaily(key, pause);
-      data.daily.cache = { key, level };
+      data.daily.cache = { key, level, v: DAILY_CACHE_VERSION };
       persist();
     } finally {
       loader.classList.add('hidden');

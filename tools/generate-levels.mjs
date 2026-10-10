@@ -3,7 +3,7 @@
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mulberry32, generateOne, assignColors } from '../src/logic/generator.js';
+import { mulberry32, shuffle, generateOne, assignColors } from '../src/logic/generator.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'src', 'logic', 'levels.js');
@@ -35,6 +35,38 @@ function pickFromPool(pool, band) {
     out.push(pool[idx]);
   }
   return out.sort((a, b) => a.grade.score - b.grade.score);
+}
+
+/**
+ * Bis zur Farbumstellung wurden die Farben direkt beim Erzeugen vergeben. Damit die 100 Rätsel
+ * (Regionen und Lösungen) identisch bleiben, verbraucht das Skript an dieser Stelle die
+ * Zufallszahlen genau wie damals. Die endgültigen Farben vergibt danach assignColors()
+ * mit eigenem Startwert.
+ */
+const LEGACY_PAIRS = new Set([[2, 9], [0, 5], [3, 4], [6, 7], [1, 8], [8, 9], [2, 5], [5, 9]].flatMap(([a, b]) => [`${a}-${b}`, `${b}-${a}`]));
+function legacyColorRng(n, regions, rng) {
+  const orth = (i) => {
+    const r = Math.floor(i / n);
+    const c = i % n;
+    return [r > 0 && i - n, r < n - 1 && i + n, c > 0 && i - 1, c < n - 1 && i + 1].filter((x) => x !== false);
+  };
+  const adj = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < regions.length; i++) for (const j of orth(i)) if (regions[i] !== regions[j]) adj[regions[i]].add(regions[j]);
+  const order = [...Array(n).keys()].sort((a, b) => adj[b].size - adj[a].size);
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const pal = shuffle([...Array(10).keys()], rng);
+    const colors = new Array(n).fill(-1);
+    const used = new Set();
+    let ok = true;
+    for (const k of order) {
+      const choice = pal.find((p) => !used.has(p) && [...adj[k]].every((o) => colors[o] < 0 || !LEGACY_PAIRS.has(`${p}-${colors[o]}`)));
+      if (choice === undefined) { ok = false; break; }
+      colors[k] = choice;
+      used.add(choice);
+    }
+    if (ok) return;
+  }
+  shuffle([...Array(10).keys()], rng);
 }
 
 function tierFor(levelNo) {
@@ -75,7 +107,7 @@ for (const band of BANDS) {
       id,
       n: p.n,
       regions: p.regions.map((k) => k.toString(36)).join(''),
-      colors: assignColors(p.n, p.regions, rng),
+      colors: (legacyColorRng(p.n, p.regions, rng), null),
       solution: p.solution,
       score: p.grade.score,
       maxTech: p.grade.maxTech,
@@ -83,6 +115,10 @@ for (const band of BANDS) {
     });
   }
 }
+
+// Farben: eigener Zufallsstrom, damit sie sich ändern lassen, ohne die Rätsel zu verändern
+const colorRng = mulberry32(20261010);
+for (const l of levels) l.colors = assignColors(l.n, [...l.regions].map((ch) => parseInt(ch, 36)), colorRng);
 
 const header = '// Automatisch erzeugt von tools/generate-levels.mjs – nicht von Hand bearbeiten.\n';
 const body = `export const LEVELS = [\n${levels.map((l) => `  ${JSON.stringify(l)},`).join('\n')}\n];\n`;

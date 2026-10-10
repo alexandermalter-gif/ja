@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { createCat, animateCat } from './catModel.js';
 import { MARK_EMPTY, MARK_X, MARK_CAT, MARK_AUTO_X } from './marks.js';
+import { PALETTE, X_COLORS } from '../logic/palette.js';
 
 const PITCH = 1.1;
 const TILE = 1.0;
@@ -23,10 +24,10 @@ const MOUSE_SPEED = 7; // Felder pro Sekunde
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const COLOR_X = '#46444a'; // eigene X: dunkelgrau
-const COLOR_AUTO_X = '#dedbd7'; // automatische X: hellgrau
+const COLOR_X = X_COLORS.own; // eigene X: dunkelgrau
+const COLOR_AUTO_X = X_COLORS.auto; // automatische X: hellgrau
 const SPARK_COLORS = ['#ffd84d', '#ffffff', '#ffb3c7', '#9fe0d8'];
-const CONFETTI_COLORS = ['#9580d0', '#b6d99c', '#f2ad73', '#ddbd5e', '#f0b7cf', '#68b5b0', '#80b9e2', '#c97674', '#ffffff', '#ffd84d'];
+const CONFETTI_COLORS = [...PALETTE.map((p) => p.hex), '#ffffff', '#ffd84d'];
 
 // --- Easing --------------------------------------------------------------------
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);

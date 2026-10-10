@@ -1,6 +1,6 @@
 // Rätsel-Generator: wird vom Level-Skript (Node) und im Browser (Tägliches Rätsel) genutzt.
 import { makeGeometry, countSolutions, gradePuzzle } from './solver.js';
-import { PALETTE, SIMILAR_PAIRS } from './palette.js';
+import { PALETTE, PAIR_DIST, DARKNESS } from './palette.js';
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -161,28 +161,76 @@ export function makeUnique(n, regions, catCells, rng, minSize) {
   return false;
 }
 
-/** Wählt Palettenfarben so, dass benachbarte Regionen sich deutlich unterscheiden. */
+/**
+ * Wählt Palettenfarben so, dass benachbarte Farbflächen sich möglichst deutlich unterscheiden.
+ * Bewertung (in dieser Reihenfolge):
+ *   1. kleinster Farbabstand (PAIR_DIST) zwischen angrenzenden Regionen, in 2er-Stufen (15–16, 17–18 …)
+ *   2. dunkle Farben eher auf kleinen Flächen (große, dunkle Flächen wirken schwer)
+ *   3. Summe der Abstände aller angrenzenden Paare
+ * Zufallsstart + lokale Suche (Tauschen/Ersetzen), mehrere Durchläufe.
+ */
 export function assignColors(n, regions, rng) {
+  const P = PALETTE.length;
   const adj = Array.from({ length: n }, () => new Set());
+  const size = new Array(n).fill(0);
   for (let i = 0; i < regions.length; i++) {
+    size[regions[i]]++;
     for (const j of orth(n, i)) if (regions[i] !== regions[j]) adj[regions[i]].add(regions[j]);
   }
-  const similar = new Set(SIMILAR_PAIRS.flatMap(([a, b]) => [`${a}-${b}`, `${b}-${a}`]));
-  const order = [...Array(n).keys()].sort((a, b) => adj[b].size - adj[a].size);
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const pal = shuffle([...Array(PALETTE.length).keys()], rng);
-    const colors = new Array(n).fill(-1);
-    const used = new Set();
-    let ok = true;
-    for (const k of order) {
-      const choice = pal.find((p) => !used.has(p) && [...adj[k]].every((o) => colors[o] < 0 || !similar.has(`${p}-${colors[o]}`)));
-      if (choice === undefined) { ok = false; break; }
-      colors[k] = choice;
-      used.add(choice);
+  const edges = [];
+  for (let a = 0; a < n; a++) for (const b of adj[a]) if (a < b) edges.push([a, b]);
+  const evaluate = (cols) => {
+    let min = Infinity;
+    let sum = 0;
+    for (const [a, b] of edges) {
+      const d = PAIR_DIST[cols[a]][cols[b]];
+      if (d < min) min = d;
+      sum += Math.min(d, 40);
     }
-    if (ok) return colors;
+    let dark = 0;
+    for (let k = 0; k < n; k++) dark += size[k] * DARKNESS[cols[k]];
+    return { min: Math.floor(min / 2), dark, sum };
+  };
+  const better = (x, y) => {
+    if (x.min !== y.min) return x.min > y.min;
+    if (Math.abs(x.dark - y.dark) > 1e-9) return x.dark < y.dark;
+    return x.sum > y.sum + 1e-9;
+  };
+  let best = null;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const order = shuffle([...Array(P).keys()], rng);
+    const cols = order.slice(0, n);
+    const pool = order.slice(n);
+    let sc = evaluate(cols);
+    for (let improved = true; improved;) {
+      improved = false;
+      for (let a = 0; a < n; a++) {
+        for (let b = a + 1; b < n; b++) {
+          [cols[a], cols[b]] = [cols[b], cols[a]];
+          const s2 = evaluate(cols);
+          if (better(s2, sc)) { sc = s2; improved = true; } else [cols[a], cols[b]] = [cols[b], cols[a]];
+        }
+        for (let u = 0; u < pool.length; u++) {
+          [cols[a], pool[u]] = [pool[u], cols[a]];
+          const s2 = evaluate(cols);
+          if (better(s2, sc)) { sc = s2; improved = true; } else [cols[a], pool[u]] = [pool[u], cols[a]];
+        }
+      }
+    }
+    if (!best || better(sc, best.sc)) best = { cols: [...cols], sc };
   }
-  return shuffle([...Array(PALETTE.length).keys()], rng).slice(0, n);
+  return best.cols;
+}
+
+/** Kleinster Farbabstand zwischen angrenzenden Regionen (für Tests). */
+export function minAdjacentDistance(n, regions, colors) {
+  let min = Infinity;
+  for (let i = 0; i < regions.length; i++) {
+    for (const j of orth(n, i)) {
+      if (regions[i] !== regions[j]) min = Math.min(min, PAIR_DIST[colors[regions[i]]][colors[regions[j]]]);
+    }
+  }
+  return min;
 }
 
 export function generateOne(n, rng, minSize) {

@@ -6,7 +6,7 @@ export const TUTORIAL_LEVEL = {
   id: 'tutorial',
   n: 5,
   regions: '0001101111212312223322433',
-  colors: [7, 4, 8, 5, 3],
+  colors: [7, 4, 9, 5, 3],
   solution: [1, 3, 0, 4, 2],
   score: 0,
   tier: 0,

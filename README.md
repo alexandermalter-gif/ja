@@ -79,6 +79,19 @@ Die ausgewählte Katze sitzt auf dem Spielfeld (3D-Modell mit passendem Fell) un
 Gelöste Level, Sterne, Punkte, Tägliche Rätsel, aktuelle und längste Serie, durchschnittliche Bestzeit je
 Brettgröße und die letzten 20 Lösungszeiten. Der Sieg-Dialog meldet **„Neue Bestzeit!“**.
 
+### Farben
+
+Die zehn Kachelfarben (Lila, Hellgrün, Braun, Orange, Gelb, Dunkelblau, Rosa, Rot, Türkis, Himmelblau) sind
+so abgestimmt, dass **jedes Paar** gut unterscheidbar ist – gemessen als wahrgenommener Farbabstand (OKLab ΔE):
+
+- normales Sehen: ΔE ≥ 15 für alle 45 Paare
+- Rot-Grün- und Blau-Gelb-Schwäche (simuliert): ΔE ≥ 8 für alle Paare
+- helle und dunkle X bleiben auf jeder Farbe sichtbar
+
+Zusätzlich verteilt der Generator die Farben je Rätsel so, dass sich angrenzende Flächen möglichst stark
+unterscheiden, und legt dunkle Farben bevorzugt auf kleine Flächen. `npm test` prüft das alles
+(`tools/check-palette.mjs`).
+
 ### Barrierefreiheit
 
 - **Muster auf Farben** (Einstellung): jede Farbe hat ein eigenes Muster – Punkte, Streifen, Karos, Ringe …
@@ -120,8 +133,8 @@ Die Level erzeugt `tools/generate-levels.mjs`, das Tägliche Rätsel erzeugt der
    Tägliches Rätsel: so lange erzeugen, bis die Punktzahl im Zielbereich des Wochentags liegt.
 
 `npm test` prüft alle 100 Level (eindeutig, korrekt, zusammenhängende Farbflächen, ohne Raten lösbar),
-löst jedes Level einmal ausschließlich mit den Hinweisen des Spiels und prüft Tutorial-Rätsel,
-8 Wochen Tagesrätsel (eindeutig, lösbar, reproduzierbar) sowie die Serien-Berechnung.
+löst jedes Level einmal ausschließlich mit den Hinweisen des Spiels, prüft Tutorial-Rätsel,
+8 Wochen Tagesrätsel (eindeutig, lösbar, reproduzierbar), die Serien-Berechnung und die Farben.
 
 ## Entwicklung
 
@@ -147,7 +160,9 @@ src/game/icons.js         SVG-Symbole
 src/game/audio.js         Soundeffekte (Web Audio, ohne Dateien)
 src/game/storage.js       Spielstand im Browser
 src/logic/solver.js       Regeln, exakter und logischer Löser
-src/logic/generator.js    Rätsel-Generator (Node und Browser)
+src/logic/generator.js    Rätsel-Generator (Node und Browser) inkl. Farbvergabe
+src/logic/palette.js      Farbpalette und Farbabstände
+src/logic/colorMath.js    Farbabstand (OKLab, Farbschwäche-Simulation)
 src/logic/levels.js       die 100 Level (generiert)
 tools/                    Level-Skript, Build, Tests
 ```

@@ -1,18 +1,41 @@
-// Farbpalette der Regionen (angelehnt an die Vorlage) – Name, Feldfarbe, Pastellton für die Katzenleiste.
-export const PALETTE = [
-  { name: 'Lila', hex: '#9580d0', pastel: '#cbbfe9' },
-  { name: 'Hellgrün', hex: '#b6d99c', pastel: '#dcecd0' },
-  { name: 'Graublau', hex: '#adbdd5', pastel: '#d5dce9' },
-  { name: 'Orange', hex: '#f2ad73', pastel: '#f9d6b8' },
-  { name: 'Gelb', hex: '#ddbd5e', pastel: '#efdfae' },
-  { name: 'Dunkelblau', hex: '#6276ae', pastel: '#aab5d4' },
-  { name: 'Rosa', hex: '#f0b7cf', pastel: '#f8dbe7' },
-  { name: 'Rot', hex: '#c97674', pastel: '#e5b8b7' },
-  { name: 'Türkis', hex: '#68b5b0', pastel: '#b2dad7' },
-  { name: 'Himmelblau', hex: '#80b9e2', pastel: '#bfdcf0' },
+// Farbpalette der Regionen – Name, Feldfarbe, Pastellton für die Katzenleiste.
+//
+// Die Farben sind so abgestimmt, dass jedes Paar gut unterscheidbar ist
+// (geprüft mit tools/check-palette.mjs, Teil von `npm test`):
+//   – normales Sehen:            OKLab ΔE ≥ 15 für alle 45 Paare
+//   – Rot-Grün- und Blau-Gelb-Schwäche (simuliert): ΔE ≥ 8 für alle Paare
+//   – helle und dunkle X bleiben auf jeder Farbe sichtbar
+// Zusätzlich verteilt assignColors() die Farben so, dass die ähnlichsten Paare
+// möglichst nie direkt nebeneinander liegen.
+import { pairDistance, tint, oklab } from './colorMath.js';
+
+const BASE = [
+  { name: 'Lila', hex: '#ab87e2' },
+  { name: 'Hellgrün', hex: '#81bf88' },
+  { name: 'Braun', hex: '#8b5f2e' },
+  { name: 'Orange', hex: '#ec933a' },
+  { name: 'Gelb', hex: '#e7d35b' },
+  { name: 'Dunkelblau', hex: '#546aaf' },
+  { name: 'Rosa', hex: '#faa7c3' },
+  { name: 'Rot', hex: '#d16269' },
+  { name: 'Türkis', hex: '#17999a' },
+  { name: 'Himmelblau', hex: '#6cc9fb' },
 ];
 
-// Farbpaare, die nicht direkt nebeneinander liegen sollen (zu ähnlich).
-export const SIMILAR_PAIRS = [
-  [2, 9], [0, 5], [3, 4], [6, 7], [1, 8], [8, 9], [2, 5], [5, 9],
-];
+export const PALETTE = BASE.map((p) => ({ ...p, pastel: tint(p.hex, 0.55) }));
+
+/**
+ * Abstand je Farbpaar als eine Zahl: der schlechtere Wert aus normalem Sehen und
+ * Farbschwäche (Farbschwäche-Werte auf dieselbe Skala gebracht: 8 ≙ 15).
+ */
+export const PAIR_DIST = PALETTE.map((a) => PALETTE.map((b) => {
+  if (a === b) return 0;
+  const d = pairDistance(a.hex, b.hex);
+  return Math.min(d.normal, d.cvd * (15 / 8));
+}));
+
+/** Wie dunkel eine Farbe ist (0 = hell) – dunkle Farben sollen eher auf kleine Flächen. */
+export const DARKNESS = PALETTE.map((p) => Math.max(0, 0.72 - oklab(p.hex)[0]));
+
+// Farben der X-Markierungen (eigene X dunkelgrau, automatische X hellgrau)
+export const X_COLORS = { own: '#2e2c31', auto: '#f1efec' };
