@@ -1,31 +1,44 @@
 // Ein kleiner 3D-Katzenkopf (Smoking-Katze) aus Grundkörpern – Gesicht zeigt in +Z (zur Kamera).
 import * as THREE from 'three';
 
-let shared = null;
+import { skinById } from './skins.js';
 
-function getShared() {
-  if (shared) return shared;
-  const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, ...extra });
-  shared = {
-    geo: {
+let geoCache = null;
+const matCache = new Map();
+
+function getGeo() {
+  if (!geoCache) {
+    geoCache = {
       sphere: new THREE.SphereGeometry(1, 32, 20),
       smallSphere: new THREE.SphereGeometry(1, 16, 12),
       cone: new THREE.ConeGeometry(1, 1, 20, 1),
       whisker: new THREE.CylinderGeometry(1, 1, 1, 6),
-    },
-    mat: {
-      fur: mat('#2c2b31', { roughness: 0.75 }),
-      white: mat('#fbf8f4', { roughness: 0.7 }),
-      ear: mat('#f2a4b5', { roughness: 0.8 }),
-      eye: mat('#ffffff', { roughness: 0.25 }),
-      pupil: mat('#141418', { roughness: 0.2 }),
-      nose: mat('#f08aa0', { roughness: 0.4 }),
-      mouth: mat('#b8435a', { roughness: 0.6 }),
-      whisker: mat('#e9e3dc', { roughness: 0.9 }),
-      blush: new THREE.MeshBasicMaterial({ color: '#ff9fb0', transparent: true, opacity: 0.45, depthWrite: false }),
-    },
+    };
+  }
+  return geoCache;
+}
+
+/** Materialien je Fellfarbe (werden geteilt). */
+function getMats(skin) {
+  if (matCache.has(skin.id)) return matCache.get(skin.id);
+  const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, ...extra });
+  const m = {
+    fur: mat(skin.fur, skin.metal ? { roughness: 0.28, metalness: 0.75 } : { roughness: 0.75 }),
+    earOuter: mat(skin.earOuter || skin.fur, skin.metal ? { roughness: 0.28, metalness: 0.75 } : { roughness: 0.75 }),
+    white: mat(skin.muzzle, { roughness: 0.7 }),
+    ear: mat(skin.ear, { roughness: 0.8 }),
+    eye: mat(skin.sclera, { roughness: 0.25 }),
+    glint: mat('#ffffff', { roughness: 0.2 }),
+    pupil: mat(skin.pupil, { roughness: 0.2 }),
+    nose: mat('#f08aa0', { roughness: 0.4 }),
+    mouth: mat('#b8435a', { roughness: 0.6 }),
+    whisker: mat(skin.fur === '#f1eee9' || skin.fur === '#fbf8f4' ? '#b9b2ac' : '#e9e3dc', { roughness: 0.9 }),
+    stripe: skin.stripes ? mat(skin.stripes, { roughness: 0.8 }) : null,
+    spots: (skin.spots || []).map((p) => ({ side: p.side, mat: mat(p.color, { roughness: 0.75 }) })),
+    blush: new THREE.MeshBasicMaterial({ color: '#ff9fb0', transparent: true, opacity: 0.45, depthWrite: false }),
   };
-  return shared;
+  matCache.set(skin.id, m);
+  return m;
 }
 
 function part(geo, mat, pos, scale, rot) {
@@ -37,9 +50,11 @@ function part(geo, mat, pos, scale, rot) {
   return m;
 }
 
-/** Erzeugt einen Katzenkopf (Breite ≈ 0.8 Einheiten). */
-export function createCat() {
-  const { geo, mat } = getShared();
+/** Erzeugt einen Katzenkopf (Breite ≈ 0.8 Einheiten) im gewählten Fell. */
+export function createCat(skinId = 'smoking') {
+  const skin = skinById(skinId);
+  const geo = getGeo();
+  const mat = getMats(skin);
   const root = new THREE.Group();
   const head = new THREE.Group();
   root.add(head);
@@ -53,14 +68,30 @@ export function createCat() {
     ear.position.set(0.18 * s, 0.195, 0);
     ear.rotation.z = -0.45 * s;
     ear.userData.base = ear.rotation.z;
-    ear.add(part(geo.cone, mat.fur, [0, 0.15, -0.02], [0.15, 0.3, 0.1]));
+    const spot = mat.spots.find((p) => p.side === s);
+    ear.add(part(geo.cone, spot ? spot.mat : mat.earOuter, [0, 0.15, -0.02], [0.15, 0.3, 0.1]));
     ear.add(part(geo.cone, mat.ear, [0, 0.136, 0.05], [0.085, 0.2, 0.05]));
     head.add(ear);
     ears.push(ear);
   }
-  // Weiße Blesse und Schnauze
-  head.add(part(geo.sphere, mat.white, [0, 0.07, 0.24], [0.06, 0.15, 0.07]));
+  // Blesse und Schnauze
+  if (skin.blaze) head.add(part(geo.sphere, mat.white, [0, 0.07, 0.24], [0.06, 0.15, 0.07]));
   head.add(part(geo.sphere, mat.white, [0, -0.12, 0.13], [0.24, 0.19, 0.19]));
+  // Tigerstreifen
+  if (mat.stripe) {
+    for (const [x, rz] of [[0, 0], [-0.075, 0.25], [0.075, -0.25]]) {
+      head.add(part(geo.sphere, mat.stripe, [x, 0.21, 0.22], [0.018, 0.075, 0.05], [0, 0, rz]));
+    }
+    for (const s of [-1, 1]) {
+      for (const [y, rz] of [[-0.02, 0.15], [-0.09, -0.1]]) {
+        head.add(part(geo.sphere, mat.stripe, [0.335 * s, y, 0.14], [0.06, 0.016, 0.05], [0, 0, rz * s]));
+      }
+    }
+  }
+  // Flecken (Glückskatze)
+  for (const p of mat.spots) {
+    head.add(part(geo.sphere, p.mat, [0.2 * p.side, 0.14, 0.13], [0.2, 0.17, 0.17], [0, 0, 0.3 * p.side]));
+  }
   // Augen
   const eyes = [];
   const pupils = [];
@@ -70,8 +101,8 @@ export function createCat() {
     eye.add(part(geo.smallSphere, mat.eye, [0, 0, 0], [0.09, 0.1, 0.05]));
     const pupil = new THREE.Group();
     pupil.position.set(0.012 * s, -0.008, 0);
-    pupil.add(part(geo.smallSphere, mat.pupil, [0, 0, 0.03], [0.056, 0.068, 0.03]));
-    pupil.add(part(geo.smallSphere, mat.eye, [0.018 * s, 0.038, 0.056], [0.018, 0.018, 0.012]));
+    pupil.add(part(geo.smallSphere, mat.pupil, [0, 0, 0.03], [skin.slit ? 0.02 : 0.056, 0.068, 0.03]));
+    pupil.add(part(geo.smallSphere, mat.glint, [0.018 * s, 0.038, 0.056], [0.018, 0.018, 0.012]));
     eye.add(pupil);
     head.add(eye);
     eyes.push(eye);

@@ -1,6 +1,7 @@
 # Katzen-Sudoku 🐱
 
-Ein browserbasiertes Logikrätsel mit **three.js** und **100 Leveln** in aufsteigender Schwierigkeit.
+Ein browserbasiertes Logikrätsel mit **three.js**: **100 Level** in aufsteigender Schwierigkeit,
+ein **Tägliches Rätsel** mit Serie, ein interaktives **Tutorial** und **8 Katzen** zum Sammeln.
 
 ## Regeln
 
@@ -10,7 +11,7 @@ Ein browserbasiertes Logikrätsel mit **three.js** und **100 Leveln** in aufstei
 | **1 Katze pro Zeile und Spalte** | In jeder Zeile und jeder Spalte sitzt genau eine Katze. |
 | **Katzen dürfen sich nicht berühren** | Auch nicht schräg (keine der 8 Nachbarzellen). |
 
-Jedes Level hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösbar.
+Jedes Rätsel hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösbar.
 
 ## Spielen
 
@@ -19,33 +20,74 @@ Jedes Level hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösb
 - **Über einen Webserver / GitHub Pages:** `index.html` ausliefern (lädt `style.css` und `dist/game.js`),
   z. B. lokal mit `npm run serve` und dann <http://localhost:8080> öffnen.
 
+Beim ersten Start beginnt automatisch das **interaktive Tutorial**: Eine Hand zeigt auf dem Spielfeld,
+wo getippt wird, und erklärt dabei Einzelfeld, Eingesperrt und Blockade. Es ist jederzeit über das Menü erreichbar.
+
 ### Bedienung
 
-- **1× tippen** → X (hier ist sicher keine Katze), **nochmal tippen** → X wieder weg
-- **Doppelt tippen** → Katze; ein Tippen auf eine Katze nimmt sie wieder weg
+| Aktion | Touch | Maus | Tastatur |
+|---|---|---|---|
+| X setzen / wieder entfernen | 1× tippen | Klick | Leertaste |
+| Katze setzen | doppelt tippen | Doppelklick | Enter |
+| Katze entfernen | antippen | Klick | Enter |
+| Notiz (Pfote) setzen / entfernen | **lange drücken** | Rechtsklick | N |
+| Mehrere X | über Felder ziehen | ziehen | – |
+| Feld wählen | – | – | Pfeiltasten |
+| Rückgängig | Knopf | Knopf | Strg/⌘ + Z |
+
 - **Automatische X:** Sobald eine Katze sitzt, bekommen alle von ihr blockierten Felder (Zeile, Spalte, Farbe,
   Nachbarfelder) von selbst ein X – als Welle, die sich von der Katze aus ausbreitet.
-  Wird die Katze entfernt, verschwinden diese X wieder.
   Automatische X sind **hellgrau**, eigene X **dunkelgrau**.
-- **Über Felder ziehen** → mehrere X auf einmal setzen (bzw. löschen, wenn man auf einem X beginnt)
-- **Strg/⌘ + Z** → Rückgängig
+- **Notizen:** Ein Pfotenabdruck bedeutet „hier vielleicht eine Katze“. Beim langen Drücken füllt sich ein Ring,
+  danach wird die Pfote gestempelt. Wird das Feld später durch ein X oder eine Katze belegt, verschwindet die Notiz.
 
 ### Fische, Helfer, Sterne
 
-- **🐟 Fische (Leben):** Eine Katze an der falschen Stelle kostet einen Fisch. Nach drei Fehlern beginnt das Level neu.
+- **🐟 Fische (Leben):** Eine Katze an der falschen Stelle kostet einen Fisch. Nach drei Fehlern beginnt das Rätsel neu.
   In den Einstellungen abschaltbar (dann werden sich störende Katzen rot markiert).
-- **Joker (Katze, 1× pro Level):** setzt eine richtige Katze.
-- **Hinweis (Glühbirne, 3× pro Level):** erklärt den nächsten logischen Schritt in Worten, hebt die betroffenen Felder hervor
-  und kann ihn auf Wunsch ausführen. Erkennt auch falsch gesetzte X und Katzen.
-- **Maus (unbegrenzt):** markiert alle Felder, die von deinen Katzen blockiert werden (z. B. nachdem du automatische X gelöscht hast).
+- **Joker (Katze, 1× pro Rätsel):** setzt eine richtige Katze.
+- **Hinweis (Glühbirne):** erklärt den nächsten logischen Schritt, hebt die Felder hervor und kann ihn ausführen.
+  Hinweise sind ein **Vorrat** (Start: 5). **+1** für jedes Level, das zum ersten Mal 3 Sterne bekommt,
+  und **+1** für jedes gelöste Tägliche Rätsel.
+- **Maus (Fehlersuche):** Eine kleine 3D-Maus flitzt zu jedem Fehler (falsches X, ohne Fische auch falsche Katzen)
+  und knabbert ihn weg. Findet sie nichts, ist ihr Einsatz **gratis**; sonst zählt er als Helfer.
 - **Sterne:** 3 ★ ohne Fehler und ohne Helfer, 2 ★ bei höchstens zwei Patzern, sonst 1 ★. Mehr Sterne geben mehr Punkte.
 
-Fortschritt, Punkte und das gerade laufende Level werden im Browser gespeichert (localStorage).
+### Tägliches Rätsel und Serie
 
-### Einstellungen
+Jeden Tag gibt es ein neues Rätsel – für alle Spieler am selben Tag gleich (das Datum ist der Zufallsstartwert).
+Montags ist es leicht (6 × 6), zum Wochenende hin wird es schwerer, sonntags 9 × 9.
+Die **Serie** zählt die Tage in Folge; das Menü zeigt sie mit Flamme und Wochenübersicht.
 
-Töne · Fische an/aus · Konflikte anzeigen ·
-Farbgrenzen (dunkle Linien zwischen Farbflächen, hilfreich bei Farbschwäche) · Alle Level freischalten · Fortschritt löschen
+### Katzen sammeln
+
+| Katze | Freischaltung |
+|---|---|
+| Smoking | von Anfang an |
+| Tiger | 10 Sterne |
+| Nebel | 30 Sterne |
+| Schneeflocke | 60 Sterne |
+| Siam | 100 Sterne |
+| Panther | 3 Tage Serie |
+| Glückskatze | 7 Tägliche Rätsel |
+| Goldkatze | 200 Sterne |
+
+Die ausgewählte Katze sitzt auf dem Spielfeld (3D-Modell mit passendem Fell) und im Joker-Knopf.
+
+### Statistik
+
+Gelöste Level, Sterne, Punkte, Tägliche Rätsel, aktuelle und längste Serie, durchschnittliche Bestzeit je
+Brettgröße und die letzten 20 Lösungszeiten. Der Sieg-Dialog meldet **„Neue Bestzeit!“**.
+
+### Barrierefreiheit
+
+- **Muster auf Farben** (Einstellung): jede Farbe hat ein eigenes Muster – Punkte, Streifen, Karos, Ringe …
+- **Farbgrenzen** (Einstellung): dunkle Linien zwischen den Farbflächen
+- **Tastatursteuerung** mit sichtbarem Rahmen auf dem Spielfeld
+- **Screenreader:** Feldposition, Farbe und jede Aktion werden angesagt
+- `prefers-reduced-motion` wird beachtet (weniger Wackeln, Partikel und Konfetti)
+
+Fortschritt, Punkte, Serie, Katzen und das laufende Rätsel werden im Browser gespeichert (localStorage).
 
 ## Level und Schwierigkeit
 
@@ -58,7 +100,8 @@ Farbgrenzen (dunkle Linien zwischen Farbflächen, hilfreich bei Farbschwäche) �
 | 56–77 | 9 × 9 | Schwer – Sehr schwer |
 | 78–100 | 10 × 10 | Sehr schwer – Experte |
 
-Die Level werden von `tools/generate-levels.mjs` erzeugt (fester Zufallsstartwert, also reproduzierbar):
+Die Level erzeugt `tools/generate-levels.mjs`, das Tägliche Rätsel erzeugt der Browser mit demselben Generator
+(`src/logic/generator.js`):
 
 1. Katzen zufällig so platzieren, dass alle Regeln erfüllt sind.
 2. Farbflächen Feld für Feld von den Katzen aus wachsen lassen – nur so, dass die Lösung eindeutig bleibt
@@ -73,31 +116,38 @@ Die Level werden von `tools/generate-levels.mjs` erzeugt (fester Zufallsstartwer
    | Gruppen | k Farben liegen komplett in k Zeilen → diese Zeilen sind für sie reserviert. |
    | Widerspruch | Annahme „Katze auf X“ führt zu einer leeren Farbe/Zeile/Spalte. |
 
-4. Je Größe viele Rätsel erzeugen, nach Punktzahl sortieren und aufsteigend auswählen.
+4. Level: je Größe viele Rätsel erzeugen, nach Punktzahl sortieren und aufsteigend auswählen.
+   Tägliches Rätsel: so lange erzeugen, bis die Punktzahl im Zielbereich des Wochentags liegt.
 
-`npm test` prüft alle 100 Level (eindeutig, korrekt, zusammenhängende Farbflächen, ohne Raten lösbar)
-und löst jedes Level einmal ausschließlich mit den Hinweisen des Spiels.
+`npm test` prüft alle 100 Level (eindeutig, korrekt, zusammenhängende Farbflächen, ohne Raten lösbar),
+löst jedes Level einmal ausschließlich mit den Hinweisen des Spiels und prüft Tutorial-Rätsel,
+8 Wochen Tagesrätsel (eindeutig, lösbar, reproduzierbar) sowie die Serien-Berechnung.
 
 ## Entwicklung
 
 ```bash
 npm install
 npm run build      # dist/game.js + dist/katzen-sudoku.html
-npm test           # Level und Hinweise prüfen
+npm test           # Level, Hinweise, Tagesrätsel prüfen
 npm run generate   # Level neu erzeugen (dauert einige Minuten)
 npm run serve      # lokaler Webserver auf Port 8080
 ```
 
 ```
 index.html, style.css     Oberfläche
-src/main.js               Spielsteuerung, Menüs, Dialoge
-src/game/board3d.js       three.js-Spielfeld (Kacheln, X, Katzen, Hinweise, Konfetti)
-src/game/catModel.js      3D-Katzenkopf aus Grundkörpern
+src/main.js               Spielsteuerung, Menü, Dialoge, Tutorial-Ablauf, Tastatur
+src/game/board3d.js       three.js-Spielfeld (Kacheln, X, Katzen, Notizen, Maus, Muster, Effekte)
+src/game/catModel.js      3D-Katzenkopf aus Grundkörpern, je Fell
+src/game/skins.js         Katzen-Sammlung: Felle, Gesichter, Freischaltregeln
+src/game/daily.js         Tägliches Rätsel, Serie, Wochenansicht
+src/game/tutorial.js      Tutorial-Rätsel und -Texte
+src/game/stats.js         Statistik und Balkendiagramme
 src/game/hints.js         Hinweise in verständlichem Deutsch
 src/game/icons.js         SVG-Symbole
 src/game/audio.js         Soundeffekte (Web Audio, ohne Dateien)
 src/game/storage.js       Spielstand im Browser
 src/logic/solver.js       Regeln, exakter und logischer Löser
+src/logic/generator.js    Rätsel-Generator (Node und Browser)
 src/logic/levels.js       die 100 Level (generiert)
-tools/                    Generator, Build, Tests
+tools/                    Level-Skript, Build, Tests
 ```

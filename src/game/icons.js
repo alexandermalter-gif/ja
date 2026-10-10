@@ -85,3 +85,13 @@ export function miniGrid(pattern) {
   }
   return `${s}</svg>`;
 }
+
+export const ICON_CHART = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20h16v2H4zM5 12h3.2v6.5H5zM10.4 7h3.2v11.5h-3.2zM15.8 3.5H19v15h-3.2z"/></svg>`;
+
+export const ICON_CAP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 3 11 5.5-11 5.5L1 8.5zm-6 8.3 6 3 6-3V16c0 1.9-2.7 3.5-6 3.5S6 17.9 6 16zm15 -1.8v6h-1.8v-5.1z"/></svg>`;
+
+export const ICON_PAW = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><ellipse cx="12" cy="15.5" rx="5.2" ry="4.4"/><ellipse cx="5.6" cy="9.8" rx="2" ry="2.5"/><ellipse cx="9.3" cy="6" rx="2" ry="2.5"/><ellipse cx="14.7" cy="6" rx="2" ry="2.5"/><ellipse cx="18.4" cy="9.8" rx="2" ry="2.5"/></g></svg>`;
+
+export const ICON_CALENDAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h2.5A1.5 1.5 0 0 1 21 5.5v14a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-14A1.5 1.5 0 0 1 4.5 4H7zM5 9v10h14V9zm2 2h4v4H7z"/></svg>`;
+
+export const ICON_CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;

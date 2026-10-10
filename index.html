@@ -33,6 +33,13 @@
       <div><small>Sterne</small><b id="menu-stars">0</b></div>
       <div><small>Gelöst</small><b id="menu-solved">0</b></div>
     </div>
+    <section class="daily-card" id="daily-card" aria-label="Tägliches Rätsel"></section>
+    <div class="menu-actions">
+      <button id="btn-skins" class="chip-btn menu-chip"></button>
+      <button id="btn-stats" class="chip-btn menu-chip"><span>Statistik</span></button>
+      <button id="btn-tutorial" class="chip-btn menu-chip"><span>Tutorial</span></button>
+      <button id="btn-hints-info" class="chip-btn menu-chip"></button>
+    </div>
     <button id="btn-continue" class="btn btn-primary btn-big"></button>
     <div id="level-groups"></div>
   </section>
@@ -41,7 +48,7 @@
     <header class="game-header">
       <button id="btn-back" class="round-btn" aria-label="Zurück zur Levelauswahl"></button>
       <div class="hud">
-        <div class="stat"><span class="label">Level</span><span class="value" id="hud-level">1</span></div>
+        <div class="stat"><span class="label" id="hud-level-label">Level</span><span class="value" id="hud-level">1</span></div>
         <div class="stat"><span class="label">Punkte</span><span class="value" id="hud-points">0</span></div>
         <div class="stat"><span class="label flame" id="hud-flame"></span><span class="value" id="hud-diff">Leicht</span></div>
       </div>
@@ -59,7 +66,7 @@
       <span class="rule" id="rule-3"><span class="ico"></span><span>Katzen dürfen sich nicht berühren</span></span>
     </button>
 
-    <div class="board-card"><div id="board"></div></div>
+    <div class="board-card"><div id="board"><div id="tut-hand" class="tut-hand hidden" aria-hidden="true">👆</div></div></div>
 
     <div class="below-board">
       <button id="btn-undo" class="chip-btn"><span>Rückgängig</span></button>
@@ -74,8 +81,8 @@
       <button id="tool-hint" class="tool" aria-label="Hinweis: erklärt den nächsten Schritt">
         <span class="ico"></span><span class="badge">3</span><span class="tool-label">Hinweis</span>
       </button>
-      <button id="tool-mouse" class="tool" aria-label="Maus: markiert alle blockierten Felder">
-        <span class="ico"></span><span class="badge">∞</span><span class="tool-label">Maus</span>
+      <button id="tool-mouse" class="tool" aria-label="Maus: sucht Fehler und knabbert sie weg">
+        <span class="ico"></span><span class="badge">?</span><span class="tool-label">Fehler?</span>
       </button>
     </div>
 
@@ -86,7 +93,22 @@
         <button id="hint-apply" class="btn btn-primary">Ausführen</button>
       </div>
     </div>
+
+    <div id="coach" class="coach hidden" role="status" aria-live="polite">
+      <div class="coach-head"><span class="coach-step"></span><button id="coach-skip" class="coach-skip">Tutorial beenden</button></div>
+      <b class="coach-title"></b>
+      <p class="coach-text"></p>
+      <button id="coach-next" class="btn btn-primary hidden"></button>
+    </div>
   </section>
+
+  <div id="loader" class="loader hidden" role="status" aria-live="polite">
+    <div class="loader-box">
+      <div class="loader-paws"><span></span><span></span><span></span></div>
+      <p>Die Katzen verstecken sich …</p>
+    </div>
+  </div>
+  <div id="sr-live" class="sr-only" aria-live="polite"></div>
 
   <div id="modal-root"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

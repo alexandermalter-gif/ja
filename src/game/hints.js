@@ -46,6 +46,7 @@ export function computeHint(geo, level, marks) {
   });
   if (wrongCats.length) {
     return {
+      kind: 'wrongCat',
       text: 'Diese Katze sitzt leider nicht richtig. Nimm sie wieder weg und schau dir die Regeln für dieses Feld noch einmal an.',
       focus: [wrongCats[0]],
       eliminate: [wrongCats[0]],
@@ -54,6 +55,7 @@ export function computeHint(geo, level, marks) {
   }
   if (wrongX.length) {
     return {
+      kind: 'wrongX',
       text: 'Hier steht ein X, das nicht stimmt – auf diesem Feld ist eine Katze durchaus möglich.',
       focus: [wrongX[0]],
       action: { type: 'clear', cells: [wrongX[0]] },
@@ -75,13 +77,15 @@ export function computeHint(geo, level, marks) {
 
   const step = findNextStep(geo, st);
   if (!step) {
-    return { text: 'Alles erledigt – hier gibt es nichts mehr zu tun.', focus: [], action: null };
+    return { kind: 'done', text: 'Alles erledigt – hier gibt es nichts mehr zu tun.', focus: [], action: null };
   }
 
   // Einzelfeld hat Vorrang: Katze setzen
   if (step.tech === 1) {
     const u = step.unit;
     return {
+      kind: 'single',
+      unitType: geo.units[u].type,
       text: `In ${unitName(geo, colors, u, 'der')} ist nur noch ein Feld möglich – hier muss die Katze hin.`,
       focus: geo.units[u].cells,
       target: step.place,
@@ -92,7 +96,8 @@ export function computeHint(geo, level, marks) {
   // Noch nicht markierte, aber von Katzen blockierte Felder
   if (blocked.length) {
     return {
-      text: 'Jede Katze blockiert ihre Zeile, ihre Spalte, ihre Farbe und alle acht Nachbarfelder. Markiere diese Felder mit einem X (oder lass die Maus das erledigen).',
+      kind: 'blocked',
+      text: 'Jede Katze blockiert ihre Zeile, ihre Spalte, ihre Farbe und alle acht Nachbarfelder. Markiere diese Felder mit einem X.',
       focus: blocked,
       eliminate: blocked,
       action: { type: 'x', cells: blocked },
@@ -124,5 +129,5 @@ export function computeHint(geo, level, marks) {
     text = `Angenommen, auf dem markierten Feld säße eine Katze: Dann bliebe für ${unitName(geo, colors, step.unit, 'die')} am Ende kein freies Feld mehr übrig. Also kann dort keine Katze sitzen.`;
     focus = geo.units[step.unit].cells;
   }
-  return { text, focus, eliminate: elim, action: { type: 'x', cells: elim } };
+  return { kind: step.kind, text, focus, eliminate: elim, action: { type: 'x', cells: elim } };
 }

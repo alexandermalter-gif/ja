@@ -7,7 +7,7 @@
   "scripts": {
     "generate": "node tools/generate-levels.mjs",
     "build": "node tools/build.mjs",
-    "test": "node tools/verify-levels.mjs && node tools/test-hints.mjs",
+    "test": "node tools/verify-levels.mjs && node tools/test-hints.mjs && node tools/test-daily.mjs",
     "serve": "npx --yes http-server -c-1 -p 8080 ."
   },
   "dependencies": {

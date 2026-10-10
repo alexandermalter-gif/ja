@@ -17,6 +17,9 @@ const CAT_Z = 0.3;
 export const CAT_ANIM_MS = 640;
 /** Zeit vom Setzen bis zum Aufprall der Katze (danach startet die X-Welle). */
 export const CAT_LAND_MS = 230;
+/** So lange muss man drücken, bis eine Notiz gesetzt wird. */
+export const LONG_PRESS_MS = 430;
+const MOUSE_SPEED = 7; // Felder pro Sekunde
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -196,6 +199,31 @@ export class Board3D {
     this.ringMat = new THREE.MeshBasicMaterial({ color: '#fff7c2', transparent: true, opacity: 0.95 });
     this.waveGeo = new THREE.RingGeometry(0.8, 1, 48);
     this.borderMat = new THREE.MeshStandardMaterial({ color: '#4a312b', roughness: 0.8 });
+    this.pawMat = new THREE.MeshStandardMaterial({ color: '#6b4a40', roughness: 0.7 });
+    this.lpRingGeo = new THREE.RingGeometry(0.44, 0.52, 48);
+    this.lpRingMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false });
+    this.cursorMat = new THREE.MeshBasicMaterial({ color: '#ffcf3a', transparent: true, opacity: 0.95, depthWrite: false });
+    this.cursorGeo = (() => {
+      const shape = new THREE.Shape();
+      const rr = (sh, w, r, hole) => {
+        const h = w / 2;
+        const pth = hole ? new THREE.Path() : sh;
+        pth.moveTo(-h + r, -h);
+        pth.lineTo(h - r, -h); pth.quadraticCurveTo(h, -h, h, -h + r);
+        pth.lineTo(h, h - r); pth.quadraticCurveTo(h, h, h - r, h);
+        pth.lineTo(-h + r, h); pth.quadraticCurveTo(-h, h, -h, h - r);
+        pth.lineTo(-h, -h + r); pth.quadraticCurveTo(-h, -h, -h + r, -h);
+        if (hole) sh.holes.push(pth);
+      };
+      rr(shape, 1.1, 0.16, false);
+      rr(shape, 0.94, 0.11, true);
+      return new THREE.ShapeGeometry(shape, 6);
+    })();
+    this.skin = 'smoking';
+    this.patternTextures = new Map();
+    this.cursor = -1;
+    this.lp = null;
+    this.mouseRun = null;
 
     // Partikelsysteme
     this.puffs = new Particles(
@@ -228,7 +256,11 @@ export class Board3D {
   // Aufbau
   // ---------------------------------------------------------------------------
 
-  setLevel(level, colors, showBorders) {
+  /** opts: { borders, patterns, paletteIdx: Palettenindex je Region } */
+  setLevel(level, colors, opts = {}) {
+    this.stopMouse();
+    this.cursor = -1;
+    this.cursorObj = null;
     this.clearHint();
     this.puffs.clear();
     this.sparks.clear();
@@ -259,7 +291,7 @@ export class Board3D {
       this.group.add(holder);
       this.cells.push({
         tile, holder, r, c,
-        state: MARK_EMPTY, x: null, cat: null,
+        state: MARK_EMPTY, x: null, cat: null, paw: null,
         press: 0, sq: 0, hop: 0, lift: 0, glow: 0, flash: 0,
         introZ: 0, introS: 1, rot: 0,
       });
@@ -282,7 +314,9 @@ export class Board3D {
       }
     }
     this.group.add(this.borders);
-    this.setShowBorders(showBorders);
+    this.setShowBorders(opts.borders);
+    this.paletteIdx = opts.paletteIdx || null;
+    this.setPatterns(opts.patterns);
 
     const ext = (n * PITCH) / 2 + 1;
     const sc = this.sun.shadow.camera;
@@ -368,8 +402,17 @@ export class Board3D {
       const cell = this.pick(ev);
       if (cell < 0) return;
       ev.preventDefault();
+      this.cb.onPointerUsed?.();
+      // Rechtsklick = Notiz (wie langes Drücken)
+      if (ev.pointerType === 'mouse' && ev.button === 2) {
+        this.pressCell(cell, 0.6);
+        this.cb.onLongPress?.(cell);
+        return;
+      }
+      if (ev.button > 0) return;
       try { el.setPointerCapture(ev.pointerId); } catch { /* egal */ }
-      this.drag = { start: cell, last: cell, moved: false, id: ev.pointerId };
+      this.drag = { start: cell, last: cell, moved: false, id: ev.pointerId, long: false };
+      this.lp = { cell, t0: performance.now(), ring: null };
       this.pressCell(cell);
     });
     el.addEventListener('pointermove', (ev) => {
@@ -379,6 +422,8 @@ export class Board3D {
         return;
       }
       if (ev.pointerId !== this.drag.id || cell < 0 || cell === this.drag.last) return;
+      if (this.drag.long) return;
+      this.cancelLongPress();
       if (!this.drag.moved) {
         this.drag.moved = true;
         this.cb.onDragStart?.(this.drag.start);
@@ -391,6 +436,8 @@ export class Board3D {
       if (!this.drag || ev.pointerId !== this.drag.id) return;
       const d = this.drag;
       this.drag = null;
+      this.cancelLongPress();
+      if (d.long) return;
       if (d.moved) this.cb.onDragEnd?.();
       else if (!cancelled) this.cb.onTap?.(d.start, ev.timeStamp);
     };
@@ -398,6 +445,307 @@ export class Board3D {
     el.addEventListener('pointercancel', (ev) => end(ev, true));
     el.addEventListener('pointerleave', () => { this.hover = -1; });
     el.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  }
+
+  cancelLongPress() {
+    if (this.lp?.ring) this.lp.ring.parent?.remove(this.lp.ring);
+    this.lp = null;
+  }
+
+  /** Fortschrittsring beim langen Drücken; löst nach LONG_PRESS_MS die Notiz aus. */
+  updateLongPress(now) {
+    const lp = this.lp;
+    if (!lp || !this.drag || this.drag.moved) return;
+    const p = (now - lp.t0) / LONG_PRESS_MS;
+    if (p > 0.25 && !lp.ring) {
+      lp.ring = new THREE.Mesh(this.lpRingGeo, this.lpRingMat);
+      lp.ring.position.z = 0.05;
+      this.cells[lp.cell].holder.add(lp.ring);
+    }
+    if (lp.ring) {
+      const q = Math.min(1, (p - 0.25) / 0.75);
+      lp.ring.scale.setScalar(1.5 - 0.5 * easeOutCubic(q));
+      this.lpRingMat.opacity = 0.85 * q;
+    }
+    if (p >= 1) {
+      const cell = lp.cell;
+      this.drag.long = true;
+      this.cancelLongPress();
+      this.shockwave(cell, '#ffffff', 0.9, 320);
+      this.wobble(cell, 0.18);
+      this.cb.onLongPress?.(cell);
+    }
+  }
+
+  /** Bildschirmposition (relativ zum Canvas) der Feldmitte – für Zeigehand & Co. */
+  cellScreenPos(i) {
+    const { x, y } = this.cellPos(i);
+    const v = new THREE.Vector3(x, y, TILE_H).project(this.camera);
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, size: w / (this.n * PITCH + 2 * MARGIN) };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notizen (Pfotenabdruck)
+  // ---------------------------------------------------------------------------
+
+  makePaw() {
+    const g = new THREE.Group();
+    const sph = this.pawGeo || (this.pawGeo = new THREE.SphereGeometry(1, 16, 10));
+    const add = (x, y, sx, sy) => {
+      const m = new THREE.Mesh(sph, this.pawMat);
+      m.position.set(x, y, 0.02);
+      m.scale.set(sx, sy, 0.025);
+      g.add(m);
+    };
+    add(0, -0.06, 0.13, 0.11);
+    add(-0.125, 0.065, 0.045, 0.055);
+    add(-0.045, 0.125, 0.045, 0.055);
+    add(0.045, 0.125, 0.045, 0.055);
+    add(0.125, 0.065, 0.045, 0.055);
+    g.rotation.z = rand(-0.25, 0.25);
+    return g;
+  }
+
+  setNote(i, on, animate = true) {
+    const cell = this.cells[i];
+    if (!cell || !!cell.paw === !!on) return;
+    if (on) {
+      const paw = this.makePaw();
+      cell.paw = paw;
+      cell.holder.add(paw);
+      if (animate) {
+        const r0 = paw.rotation.z;
+        paw.scale.setScalar(0.001);
+        this.tween(`paw${i}`, 380, (p) => {
+          const s = p < 0.5 ? 1.6 - 0.6 * easeInQuad(p / 0.5) : 1 + 0.12 * damped((p - 0.5) / 0.5, 1, 4);
+          paw.scale.set(s, s, 1);
+          paw.rotation.z = r0 + 0.5 * (1 - easeOutCubic(p));
+        }, () => paw.scale.setScalar(1));
+        this.tween(`pawfx${i}`, 1, () => {}, () => {
+          this.puffAt(i, 4, '#f3e6dc', 0.3);
+          this.pressCell(i, 0.5);
+        }, 190);
+      }
+    } else {
+      const paw = cell.paw;
+      cell.paw = null;
+      this.tweens.delete(`paw${i}`);
+      if (!animate) { cell.holder.remove(paw); return; }
+      const s0 = paw.scale.x;
+      this.tween(`pawout${i}`, 200, (p) => paw.scale.setScalar(Math.max(0.001, s0 * (1 - easeInQuad(p)))), () => cell.holder.remove(paw));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Katzen-Fell
+  // ---------------------------------------------------------------------------
+
+  setSkin(id) {
+    if (id === this.skin) return;
+    this.skin = id;
+    this.cells.forEach((cell, i) => {
+      if (!cell.cat) return;
+      cell.holder.remove(cell.cat);
+      const cat = createCat(id);
+      cat.position.set(0, CAT_Y, CAT_Z);
+      cell.cat = cat;
+      cell.holder.add(cat);
+      cat.scale.setScalar(0.001);
+      this.tween(`cat${i}`, 420, (p) => cat.scale.setScalar(Math.max(0.001, easeOutBack(p))), null, i * 15);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Muster (Barrierefreiheit)
+  // ---------------------------------------------------------------------------
+
+  patternTexture(idx) {
+    if (this.patternTextures.has(idx)) return this.patternTextures.get(idx);
+    const S = 128;
+    const cv = document.createElement('canvas');
+    cv.width = S;
+    cv.height = S;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, S, S);
+    g.fillStyle = 'rgba(0,0,0,0.26)';
+    g.strokeStyle = 'rgba(0,0,0,0.26)';
+    g.lineWidth = 7;
+    const lines = (fn) => { g.beginPath(); fn(); g.stroke(); };
+    switch (idx % 10) {
+      case 0: for (let y = 16; y < S; y += 32) for (let x = 16; x < S; x += 32) { g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); } break;
+      case 1: lines(() => { for (let k = -S; k < S * 2; k += 32) { g.moveTo(k, S); g.lineTo(k + S, 0); } }); break;
+      case 2: lines(() => { for (let y = 16; y < S; y += 32) { g.moveTo(0, y); g.lineTo(S, y); } }); break;
+      case 3: for (let y = 0; y < S; y += 32) for (let x = 0; x < S; x += 32) if (((x + y) / 32) % 2 === 0) g.fillRect(x + 4, y + 4, 24, 24); break;
+      case 4: lines(() => { for (let x = 16; x < S; x += 32) { g.moveTo(x, 0); g.lineTo(x, S); } }); break;
+      case 5: lines(() => { for (let k = -S; k < S * 2; k += 32) { g.moveTo(k, 0); g.lineTo(k + S, S); } }); break;
+      case 6: g.lineWidth = 5; for (let y = 32; y < S; y += 64) for (let x = 32; x < S; x += 64) { g.beginPath(); g.arc(x, y, 18, 0, 7); g.stroke(); } break;
+      case 7: g.lineWidth = 4; lines(() => { for (let k = 16; k < S; k += 32) { g.moveTo(k, 0); g.lineTo(k, S); g.moveTo(0, k); g.lineTo(S, k); } }); break;
+      case 8: g.lineWidth = 6; lines(() => { for (let y = 20; y < S; y += 32) { g.moveTo(0, y); for (let x = 0; x <= S; x += 16) g.lineTo(x, y + ((x / 16) % 2 ? -10 : 0)); } }); break;
+      default: g.lineWidth = 6; lines(() => { for (let y = 32; y < S; y += 64) for (let x = 32; x < S; x += 64) { g.moveTo(x - 12, y); g.lineTo(x + 12, y); g.moveTo(x, y - 12); g.lineTo(x, y + 12); } }); break;
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    this.patternTextures.set(idx, tex);
+    return tex;
+  }
+
+  setPatterns(on) {
+    this.cells.forEach((cell, i) => {
+      const idx = this.paletteIdx ? this.paletteIdx[this.regions[i]] : this.regions[i];
+      cell.tile.material.map = on ? this.patternTexture(idx) : null;
+      cell.tile.material.needsUpdate = true;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tastatur-Cursor
+  // ---------------------------------------------------------------------------
+
+  setCursor(i) {
+    if (this.cursorObj) this.cursorObj.parent?.remove(this.cursorObj);
+    this.cursorObj = null;
+    this.cursor = i;
+    if (i < 0 || !this.cells[i]) return;
+    const m = new THREE.Mesh(this.cursorGeo, this.cursorMat);
+    m.position.z = 0.06;
+    this.cells[i].holder.add(m);
+    this.cursorObj = m;
+    this.wobble(i, 0.08);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Die Maus (Fehlersuche)
+  // ---------------------------------------------------------------------------
+
+  makeMouse() {
+    const g = new THREE.Group();
+    const body = new THREE.Group();
+    g.add(body);
+    const sph = this.pawGeo || (this.pawGeo = new THREE.SphereGeometry(1, 16, 10));
+    const m = (color, rough = 0.7) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const grey = m('#a9a6ab');
+    const light = m('#d9d6db');
+    const pink = m('#f2a4b5');
+    const black = m('#151417', 0.2);
+    const add = (mat, pos, scale) => {
+      const mesh = new THREE.Mesh(sph, mat);
+      mesh.position.set(...pos);
+      mesh.scale.set(...scale);
+      mesh.castShadow = true;
+      body.add(mesh);
+      return mesh;
+    };
+    add(grey, [0, -0.04, 0.12], [0.17, 0.24, 0.13]);
+    add(light, [0, -0.02, 0.16], [0.11, 0.16, 0.07]);
+    add(grey, [0, 0.2, 0.15], [0.12, 0.13, 0.1]);
+    const ears = [];
+    for (const s of [-1, 1]) {
+      ears.push(add(grey, [0.1 * s, 0.25, 0.21], [0.07, 0.06, 0.03]));
+      add(pink, [0.1 * s, 0.25, 0.225], [0.045, 0.04, 0.02]);
+      add(black, [0.045 * s, 0.3, 0.2], [0.018, 0.018, 0.015]);
+    }
+    add(pink, [0, 0.335, 0.165], [0.025, 0.022, 0.02]);
+    const tailCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, -0.26, 0.1), new THREE.Vector3(0.06, -0.38, 0.08),
+      new THREE.Vector3(-0.04, -0.5, 0.07), new THREE.Vector3(0.05, -0.6, 0.06),
+    ]);
+    const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 16, 0.014, 6), pink);
+    body.add(tail);
+    g.userData = { body, tail, ears };
+    g.scale.setScalar(0.9);
+    return g;
+  }
+
+  /**
+   * Maus läuft vom Rand zu jedem Zielfeld (onArrive je Feld) und wieder hinaus.
+   * Ohne Ziele dreht sie eine Runde übers Brett.
+   */
+  runMouse(targets, { onArrive, onDone } = {}) {
+    this.stopMouse();
+    const half = (this.n * PITCH) / 2;
+    const mouse = this.makeMouse();
+    mouse.position.set(-half - 0.6, -half + 0.4, TILE_H);
+    this.scene.add(mouse);
+    // Reihenfolge: jeweils das nächstgelegene Ziel
+    const order = [];
+    const left = [...targets];
+    let cur = { x: mouse.position.x, y: mouse.position.y };
+    while (left.length) {
+      left.sort((a, b) => {
+        const pa = this.cellPos(a);
+        const pb = this.cellPos(b);
+        return Math.hypot(pa.x - cur.x, pa.y - cur.y) - Math.hypot(pb.x - cur.x, pb.y - cur.y);
+      });
+      const nxt = left.shift();
+      order.push(nxt);
+      cur = this.cellPos(nxt);
+    }
+    const pts = order.map((i) => ({ ...this.cellPos(i), cell: i }));
+    if (!pts.length) {
+      // eine Runde zur Kontrolle
+      const q = half * 0.55;
+      pts.push({ x: -q, y: q }, { x: q, y: q }, { x: q, y: -q }, { x: 0, y: 0, cheer: true });
+    }
+    pts.push({ x: half + 0.8, y: half + 0.6, exit: true });
+    this.mouseRun = { mouse, pts, seg: 0, from: { x: mouse.position.x, y: mouse.position.y }, t0: performance.now(), pauseUntil: 0, onArrive, onDone };
+    this.shake(0.015);
+  }
+
+  stopMouse() {
+    if (!this.mouseRun) return;
+    this.scene.remove(this.mouseRun.mouse);
+    this.mouseRun = null;
+  }
+
+  updateMouse(now) {
+    const run = this.mouseRun;
+    if (!run) return;
+    const { mouse } = run;
+    const ud = mouse.userData;
+    ud.tail.rotation.z = Math.sin(now / 70) * 0.35;
+    if (now < run.pauseUntil) {
+      ud.body.position.z = Math.abs(Math.sin(now / 60)) * 0.08;
+      ud.ears.forEach((e, k) => { e.scale.y = 0.06 + Math.sin(now / 50 + k) * 0.01; });
+      return;
+    }
+    const target = run.pts[run.seg];
+    const dx = target.x - run.from.x;
+    const dy = target.y - run.from.y;
+    const dist = Math.hypot(dx, dy);
+    const dur = Math.max(120, (dist / (MOUSE_SPEED * PITCH)) * 1000);
+    const p = Math.min(1, (now - run.t0) / dur);
+    const e = easeInOutCubic(p);
+    mouse.position.x = run.from.x + dx * e;
+    mouse.position.y = run.from.y + dy * e;
+    mouse.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+    ud.body.position.z = Math.abs(Math.sin(now / 45)) * 0.05;
+    ud.body.rotation.y = Math.sin(now / 45) * 0.15;
+    if (p >= 1) {
+      run.from = { x: target.x, y: target.y };
+      run.t0 = now;
+      run.seg++;
+      if (target.cell !== undefined) {
+        run.pauseUntil = now + 380;
+        run.t0 = now + 380;
+        this.sparksAt(target.cell, 8, ['#e5484d', '#ffffff', '#ffd84d'], 2.4, 0.05);
+        this.wobble(target.cell, 0.25);
+        run.onArrive?.(target.cell);
+      } else if (target.cheer) {
+        run.pauseUntil = now + 520;
+        run.t0 = now + 520;
+        const center = Math.floor(this.n / 2) * this.n + Math.floor(this.n / 2);
+        this.sparksAt(center, 14, ['#ffd84d', '#ffffff', '#9fe0d8', '#ffb3c7'], 3, 0.06);
+      }
+      if (target.exit || run.seg >= run.pts.length) {
+        const done = run.onDone;
+        this.stopMouse();
+        done?.();
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -578,7 +926,7 @@ export class Board3D {
       }
     }
     if (state === MARK_CAT && !cell.cat) {
-      const cat = createCat();
+      const cat = createCat(this.skin);
       cat.position.set(0, CAT_Y, CAT_Z);
       cell.cat = cat;
       cell.holder.add(cat);
@@ -970,6 +1318,12 @@ export class Board3D {
       }
     }
 
+    this.updateLongPress(now);
+    this.updateMouse(now);
+    if (this.cursorObj) {
+      const s = 1 + Math.sin(now / 180) * 0.03;
+      this.cursorObj.scale.set(s, s, 1);
+    }
     this.puffs.update(dt);
     this.sparks.update(dt);
     this.confetti.update(dt);

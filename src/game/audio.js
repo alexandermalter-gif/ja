@@ -108,6 +108,29 @@ export const sfx = {
     tone({ f1: f * 2, dur: 0.18, type: 'sine', gain: 0.03, delay: 0.03 });
   },
   tick: () => tone({ f1: 1800, dur: 0.02, type: 'square', gain: 0.012 }),
+  /** Notiz (Pfote) gesetzt / entfernt */
+  note: (on = true) => {
+    tone({ f1: on ? 700 : 900, f2: on ? 950 : 600, dur: 0.09, type: 'sine', gain: 0.06 });
+    noise({ dur: 0.04, gain: 0.02, freq: 1800 });
+  },
+  /** Maus quiekt */
+  squeak: () => {
+    tone({ f1: vary(2200), f2: 2900, dur: 0.06, type: 'sine', gain: 0.05 });
+    tone({ f1: 2600, f2: 2100, dur: 0.07, type: 'sine', gain: 0.04, delay: 0.07 });
+  },
+  scurry: () => {
+    for (let i = 0; i < 6; i++) noise({ dur: 0.025, gain: 0.025, freq: 3000, delay: i * 0.045 });
+  },
+  /** neue Katze freigeschaltet */
+  unlock: () => {
+    [784, 988, 1175, 1568].forEach((f, i) => tone({ f1: f, dur: 0.18, type: 'triangle', gain: 0.07, delay: i * 0.08 }));
+    tone({ f1: 2093, dur: 0.4, type: 'sine', gain: 0.04, delay: 0.32 });
+  },
+  /** Serien-Flamme */
+  streak: () => {
+    noise({ dur: 0.3, gain: 0.05, freq: 900 });
+    tone({ f1: 330, f2: 660, dur: 0.3, type: 'triangle', gain: 0.07 });
+  },
   win: () => {
     [523, 659, 784, 1047].forEach((f, i) => tone({ f1: f, dur: 0.22, type: 'triangle', gain: 0.1, delay: i * 0.11 }));
     tone({ f1: 1047, f2: 1568, dur: 0.4, gain: 0.07, delay: 0.5 });
