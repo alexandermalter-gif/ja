@@ -26,6 +26,7 @@ Jedes Level hat **genau eine Lösung** und ist **ohne Raten** rein logisch lösb
 - **Automatische X:** Sobald eine Katze sitzt, bekommen alle von ihr blockierten Felder (Zeile, Spalte, Farbe,
   Nachbarfelder) von selbst ein X – als Welle, die sich von der Katze aus ausbreitet.
   Wird die Katze entfernt, verschwinden diese X wieder.
+  Automatische X sind **hellgrau**, eigene X **dunkelgrau**.
 - **Über Felder ziehen** → mehrere X auf einmal setzen (bzw. löschen, wenn man auf einem X beginnt)
 - **Strg/⌘ + Z** → Rückgängig
 

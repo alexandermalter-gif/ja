@@ -2,7 +2,7 @@
 import { LEVELS } from './logic/levels.js';
 import { PALETTE } from './logic/palette.js';
 import { makeGeometry } from './logic/solver.js';
-import { Board3D } from './game/board3d.js';
+import { Board3D, CAT_LAND_MS, CAT_ANIM_MS } from './game/board3d.js';
 import { MARK_EMPTY, MARK_X, MARK_CAT, MARK_AUTO_X } from './game/marks.js';
 import { computeHint } from './game/hints.js';
 import { loadData, saveData, resetData } from './game/storage.js';
@@ -76,6 +76,48 @@ function toast(msg) {
 function vibrate(ms) {
   try { navigator.vibrate?.(ms); } catch { /* egal */ }
 }
+
+/** CSS-Animation neu starten (Klasse entfernen, Reflow, wieder setzen). */
+function retrigger(el, cls) {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+/** Zahl in einem Element weich hochzählen. */
+function animateNumber(el, from, to, dur = 900, onStep) {
+  const t0 = performance.now();
+  const fmt = (v) => Math.round(v).toLocaleString('de-DE');
+  let last = -1;
+  const stepFn = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    const v = from + (to - from) * e;
+    el.textContent = fmt(v);
+    const shown = Math.round(v);
+    if (shown !== last) { last = shown; onStep?.(); }
+    if (p < 1) requestAnimationFrame(stepFn);
+  };
+  requestAnimationFrame(stepFn);
+}
+
+/** Schrift so weit verkleinern, dass der Text in seine Spalte passt. */
+function fitText(el, maxPx, minPx = 12) {
+  if (!el) return;
+  let size = maxPx;
+  el.style.fontSize = `${size}px`;
+  while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) {
+    size -= 1;
+    el.style.fontSize = `${size}px`;
+  }
+}
+
+function fitHud() {
+  const base = Math.min(26, Math.max(18, window.innerWidth * 0.058));
+  document.querySelectorAll('.hud .value').forEach((el) => fitText(el, base, 12));
+}
+window.addEventListener('resize', () => fitHud());
 
 // ---------------------------------------------------------------------------
 // Modale Dialoge
@@ -208,7 +250,7 @@ function applySettings() {
 // Levelauswahl
 // ---------------------------------------------------------------------------
 
-function renderMenu() {
+function renderMenu(animate = false) {
   $('#menu-points').textContent = totalPoints().toLocaleString('de-DE');
   $('#menu-stars').textContent = `${totalStars()} / ${LEVELS.length * 3}`;
   const solved = Object.keys(data.best).length;
@@ -228,6 +270,8 @@ function renderMenu() {
   const groups = $('#level-groups');
   groups.innerHTML = '';
   const sizes = [...new Set(LEVELS.map((l) => l.n))];
+  groups.classList.toggle('enter', animate);
+  let btnIndex = 0;
   for (const n of sizes) {
     const lv = LEVELS.filter((l) => l.n === n);
     const sec = document.createElement('section');
@@ -241,13 +285,15 @@ function renderMenu() {
       const btn = document.createElement('button');
       btn.className = `level-btn tier-${l.tier}${best ? ' done' : ''}${unlocked ? '' : ' locked'}${data.current?.id === l.id ? ' current' : ''}`;
       btn.style.setProperty('--tier', TIERS[l.tier].color);
+      btn.style.setProperty('--i', Math.min(btnIndex++, 40));
       btn.setAttribute('aria-label', `Level ${l.id}${unlocked ? '' : ' (gesperrt)'}`);
       const stars = best ? [1, 2, 3].map((k) => `<i class="${k <= best.stars ? 'on' : ''}">${I.ICON_STAR}</i>`).join('') : '';
       btn.innerHTML = unlocked
         ? `<span class="num">${l.id}</span><span class="stars">${stars}</span>`
         : `<span class="lock">${I.ICON_LOCK}</span><span class="num small">${l.id}</span>`;
       btn.addEventListener('click', () => {
-        if (!unlocked) { toast('Löse zuerst die vorherigen Level 🐾'); return; }
+        if (!unlocked) { retrigger(btn, 'nope'); sfx.clear(); toast('Löse zuerst die vorherigen Level 🐾'); return; }
+        sfx.pop();
         startLevel(l.id);
       });
       grid.appendChild(btn);
@@ -270,7 +316,7 @@ function showMenu() {
   hideHintBubble();
   $('#screen-game').classList.add('hidden');
   $('#screen-menu').classList.remove('hidden');
-  renderMenu();
+  renderMenu(true);
   const cur = document.querySelector('.level-btn.current') || document.querySelector('.level-btn:not(.done):not(.locked)');
   cur?.scrollIntoView({ block: 'center' });
 }
@@ -287,6 +333,7 @@ function ensureBoard() {
       onDragStart: handleDragStart,
       onDragEnter: handleDragEnter,
       onDragEnd: handleDragEnd,
+      onCatLand: () => { sfx.land(); vibrate(18); },
     });
     return true;
   } catch (err) {
@@ -336,6 +383,7 @@ function startLevel(id, { fresh = false } = {}) {
   $('#hud-diff').textContent = tier.name;
   $('#hud-flame').style.color = tier.color;
   updateHud();
+  fitHud();
   renderFish();
   renderCatBar(true);
   updateConflicts();
@@ -350,8 +398,31 @@ function startLevel(id, { fresh = false } = {}) {
   }
 }
 
-function updateHud() {
-  $('#hud-points').textContent = totalPoints().toLocaleString('de-DE');
+function updateHud(animateFrom = null) {
+  const el = $('#hud-points');
+  const total = totalPoints();
+  if (animateFrom !== null && animateFrom !== total) {
+    retrigger(el, 'bump');
+    animateNumber(el, animateFrom, total, 1100, () => fitHud());
+  } else {
+    el.textContent = total.toLocaleString('de-DE');
+  }
+  fitHud();
+}
+
+/** Ein verlorener Fisch springt aus der Leiste und fliegt davon. */
+function flyFish(index) {
+  const el = $('#fish-bar').children[index];
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  ghost.className = 'fish-ghost';
+  ghost.innerHTML = I.fishIcon(false);
+  ghost.style.left = `${r.left}px`;
+  ghost.style.top = `${r.top}px`;
+  ghost.style.width = `${r.width}px`;
+  document.body.appendChild(ghost);
+  ghost.addEventListener('animationend', () => ghost.remove());
 }
 
 function renderFish() {
@@ -372,6 +443,7 @@ function renderCatBar(initial = false) {
     for (let k = 0; k < level.n; k++) {
       const span = document.createElement('span');
       span.className = 'cat-slot';
+      span.style.setProperty('--k', k);
       el.appendChild(span);
     }
     el.style.setProperty('--slots', level.n);
@@ -382,9 +454,8 @@ function renderCatBar(initial = false) {
     span.innerHTML = I.catHeadIcon(f ? p.hex : p.pastel, f);
     span.title = `${p.name}${f ? ' ✓' : ''}`;
     if (f && !game.lastFound.has(k) && !initial) {
-      span.classList.remove('pop');
-      void span.offsetWidth;
-      span.classList.add('pop');
+      // erst beim Aufprall der Katze ploppen
+      setTimeout(() => retrigger(span, 'pop'), CAT_LAND_MS);
     }
   });
   game.lastFound = found;
@@ -393,6 +464,8 @@ function renderCatBar(initial = false) {
 function renderTools() {
   const j = $('#tool-joker .badge');
   const h = $('#tool-hint .badge');
+  if (j.textContent !== String(game.jokersLeft)) retrigger(j, 'bump');
+  if (h.textContent !== String(game.hintsLeft)) retrigger(h, 'bump');
   j.textContent = game.jokersLeft;
   h.textContent = game.hintsLeft;
   $('#tool-joker').classList.toggle('empty', game.jokersLeft <= 0);
@@ -472,11 +545,13 @@ const cellDist = (a, b) => {
 function autoMark(onlyFrom = null) {
   const { geo, marks } = game;
   const sources = onlyFrom !== null ? [onlyFrom] : [...marks.keys()].filter((i) => marks[i] === MARK_CAT);
+  // Bei einer frisch gesetzten Katze startet die Welle genau beim Aufprall.
+  const base = onlyFrom !== null ? CAT_LAND_MS + 30 : 60;
   const delays = new Map();
   for (const s of sources) {
     for (const a of geo.attacks[s]) {
       if (marks[a] !== MARK_EMPTY) continue;
-      const d = 90 + (cellDist(s, a) - 1) * WAVE_MS;
+      const d = base + (cellDist(s, a) - 1) * WAVE_MS;
       delays.set(a, Math.min(delays.get(a) ?? Infinity, d));
     }
   }
@@ -484,7 +559,7 @@ function autoMark(onlyFrom = null) {
     game.marks[c] = MARK_AUTO_X;
     board.setCell(c, MARK_AUTO_X, true, d);
   }
-  if (delays.size) sfx.sweep();
+  if (delays.size) sfx.wave([...delays.values()].map((d) => d - base));
   return delays.size;
 }
 
@@ -500,25 +575,37 @@ function cleanupAutoX(origin = -1) {
 
 function placeCat(i, byHelper = false) {
   if (data.settings.lives && !byHelper && !game.solution.has(i)) {
-    // Fehler: Fisch weg, Katze springt wieder vom Feld
+    // Fehler: Katze landet, schüttelt den Kopf, ein Fisch springt weg, Katze verpufft.
     setMark(i, MARK_CAT);
     board.flashError(i);
-    sfx.error();
-    vibrate([60, 40, 60]);
+    sfx.cat();
+    board.locked = true;
     game.fish -= 1;
     game.mistakes += 1;
-    renderFish();
-    const fishEls = $('#fish-bar').children;
-    fishEls[game.fish]?.classList.add('lose');
-    toast(game.fish > 0 ? 'Hier passt keine Katze hin – ein Fisch ist weg! 🐟' : 'Oh nein, keine Fische mehr!');
-    board.locked = true;
+    const lost = game.fish;
+    const g = game;
     setTimeout(() => {
-      if (!game) return;
-      if (game.marks[i] === MARK_CAT) setMark(i, MARK_X);
+      if (game !== g) return;
+      sfx.error();
+      vibrate([50, 40, 70]);
+      flyFish(lost);
+      renderFish();
+      retrigger($('#fish-bar').children[lost], 'lose');
+      retrigger($('#fish-bar'), 'hurt');
+      toast(game.fish > 0 ? 'Hier passt keine Katze hin – ein Fisch ist weg! 🐟' : 'Oh nein, keine Fische mehr!');
+    }, CAT_LAND_MS);
+    setTimeout(() => {
+      if (game !== g) return;
+      if (game.marks[i] === MARK_CAT) {
+        board.poofCat(i);
+        sfx.poof();
+        game.marks[i] = MARK_X;
+        setTimeout(() => { if (game === g && game.marks[i] === MARK_X) board.setCell(i, MARK_X); }, 160);
+      }
       board.locked = false;
       afterChange();
       if (game.fish <= 0) gameOver();
-    }, 700);
+    }, CAT_LAND_MS + 820);
     return;
   }
   setMark(i, MARK_CAT);
@@ -557,11 +644,14 @@ function handleTap(i, timeStamp) {
   if (cur === MARK_EMPTY) {
     setMark(i, MARK_X);
     sfx.mark();
+    vibrate(6);
   } else if (isX(cur)) {
     setMark(i, MARK_EMPTY);
     sfx.clear();
+    vibrate(4);
   } else {
     removeCat(i);
+    vibrate(10);
   }
   afterChange();
 }
@@ -572,6 +662,7 @@ function handleDragStart(start) {
   lastTap.cell = -1;
   snapshot();
   game.dragMode = isX(game.marks[start]) ? 'erase' : 'mark';
+  game.dragChain = 0;
   applyDrag(start);
 }
 
@@ -582,8 +673,8 @@ function handleDragEnter(i) {
 
 function applyDrag(i) {
   const m = game.marks[i];
-  if (game.dragMode === 'mark' && m === MARK_EMPTY) { setMark(i, MARK_X); sfx.mark(); }
-  if (game.dragMode === 'erase' && isX(m)) { setMark(i, MARK_EMPTY); sfx.clear(); }
+  if (game.dragMode === 'mark' && m === MARK_EMPTY) { setMark(i, MARK_X); sfx.mark(1 + game.dragChain++); vibrate(5); }
+  if (game.dragMode === 'erase' && isX(m)) { setMark(i, MARK_EMPTY); sfx.clear(); vibrate(4); }
 }
 
 function handleDragEnd() {
@@ -647,13 +738,21 @@ function win() {
     points: Math.max(points, prev?.points || 0),
     time: Math.min(time, prev?.time ?? Infinity),
   };
+  const pointsBefore = totalPoints();
   data.unlocked = Math.max(data.unlocked, Math.min(LEVELS.length, level.id + 1));
   data.current = null;
   persist();
-  updateHud();
-  board.celebrate();
-  sfx.win();
   const isLast = level.id === LEVELS.length;
+  const g = game;
+  // Erst die letzte Katze landen lassen, dann feiern.
+  setTimeout(() => {
+    if (game !== g) return;
+    board.celebrate();
+    sfx.win();
+    vibrate([30, 60, 30, 60, 80]);
+    retrigger($('#cat-bar'), 'party');
+    updateHud(pointsBefore);
+  }, CAT_ANIM_MS - 80);
   setTimeout(() => {
     if (!game || game.level.id !== level.id) return;
     openModal({
@@ -662,9 +761,9 @@ function win() {
       dismissible: false,
       body: `
         <div class="win-cat">${I.ICON_CAT_FACE}</div>
-        <div class="win-stars">${[1, 2, 3].map((k) => `<i class="${k <= stars ? 'on' : ''}" style="--d:${k * 0.15}s">${I.ICON_STAR}</i>`).join('')}</div>
+        <div class="win-stars">${[1, 2, 3].map((k) => `<i class="${k <= stars ? 'on' : ''}" style="--d:${0.25 + k * 0.28}s">${I.ICON_STAR}</i>`).join('')}</div>
         <div class="win-stats">
-          <div><small>Punkte</small><b>+${points}</b></div>
+          <div><small>Punkte</small><b id="win-points">+0</b></div>
           <div><small>Zeit</small><b>${formatTime(time)}</b></div>
           <div><small>Fehler</small><b>${game.mistakes}</b></div>
         </div>
@@ -676,7 +775,16 @@ function win() {
         ...(isLast ? [] : [{ label: `Weiter: Level ${level.id + 1}`, primary: true, onClick: () => startLevel(level.id + 1) }]),
       ],
     });
-  }, 1300);
+    // Sterne einzeln mit Ton, danach die Punkte hochzählen
+    for (let k = 0; k < stars; k++) setTimeout(() => { sfx.star(k); vibrate(12); }, (0.25 + (k + 1) * 0.28) * 1000 + 120);
+    const pts = document.getElementById('win-points');
+    setTimeout(() => {
+      if (!pts) return;
+      let n = 0;
+      animateNumber(pts, 0, points, 900, () => { if (n++ % 3 === 0) sfx.tick(); });
+      setTimeout(() => { pts.textContent = `+${points.toLocaleString('de-DE')}`; retrigger(pts, 'bump'); }, 950);
+    }, (0.25 + stars * 0.28) * 1000 + 350);
+  }, CAT_ANIM_MS + 1900);
 }
 
 function gameOver() {
@@ -711,6 +819,7 @@ function useJoker() {
   const openCount = (c) => game.geo.units[game.geo.cellUnits[c][2]].cells.filter((x) => game.marks[x] === MARK_EMPTY).length;
   missing.sort((a, b) => openCount(b) - openCount(a));
   const cell = missing[0];
+  retrigger($('#tool-joker'), 'used');
   placeCat(cell, true);
   game.jokersLeft -= 1;
   game.helpersUsed += 1;
@@ -727,6 +836,8 @@ function useHint() {
   game.hintsLeft -= 1;
   game.helpersUsed += 1;
   sfx.hint();
+  retrigger($('#tool-hint'), 'used');
+  $('#tool-hint').classList.add('active');
   board.setHint(h);
   showHintBubble(h);
   renderTools();
@@ -738,6 +849,7 @@ function useMouse() {
   hideHintBubble();
   const before = game.marks.slice();
   const count = autoMark();
+  retrigger($('#tool-mouse'), 'used');
   if (!count) {
     toast(game.marks.some((m) => m === MARK_CAT) ? 'Alles schon markiert – die Maus ist zufrieden.' : 'Setze zuerst eine Katze – dann jagt die Maus los.');
     return;
@@ -761,9 +873,10 @@ function showHintBubble(h) {
       a.cells.forEach((c, k) => {
         if (game.marks[c] !== MARK_EMPTY) return;
         game.marks[c] = MARK_X;
-        setTimeout(() => { if (game && game.marks[c] === MARK_X) board.setCell(c, MARK_X); }, k * 25);
+        setTimeout(() => {
+          if (game && game.marks[c] === MARK_X) { board.setCell(c, MARK_X); sfx.mark(1 + k); }
+        }, k * 70);
       });
-      sfx.mark();
     }
     if (a.type === 'clear') a.cells.forEach((c) => { if (game.marks[c] === MARK_CAT) removeCat(c); else setMark(c, MARK_EMPTY); });
     afterChange();
@@ -773,6 +886,7 @@ function showHintBubble(h) {
 
 function hideHintBubble() {
   $('#hint-bubble').classList.add('hidden');
+  $('#tool-hint').classList.remove('active');
   board?.clearHint();
 }
 
@@ -836,7 +950,7 @@ function buildStaticUi() {
 }
 
 buildStaticUi();
-renderMenu();
+renderMenu(true);
 if (!data.tutorialSeen) {
   showRules(() => {
     data.tutorialSeen = true;
