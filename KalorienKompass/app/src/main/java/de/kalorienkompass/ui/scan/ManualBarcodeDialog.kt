@@ -9,7 +9,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pin
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,7 +66,7 @@ internal fun ManualBarcodeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.Pin, contentDescription = null) },
+        icon = { Icon(Icons.Filled.Keyboard, contentDescription = null) },
         title = { Text("Barcode eingeben") },
         text = {
             Column {

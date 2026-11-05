@@ -91,10 +91,9 @@ internal class BarcodeAnalyzer(
 
     /** Counts a failed frame; reports a persistent problem once (always on the main thread). */
     private fun reportFailure(e: Exception) {
-        Log.w(TAG, "Barcode detection failed", e)
-        if (consecutiveFailures.incrementAndGet() >= MAX_CONSECUTIVE_FAILURES &&
-            failureReported.compareAndSet(false, true)
-        ) {
+        val failures = consecutiveFailures.incrementAndGet()
+        if (failures <= 3) Log.w(TAG, "Barcode detection failed", e)
+        if (failures >= MAX_CONSECUTIVE_FAILURES && failureReported.compareAndSet(false, true)) {
             mainHandler.post {
                 if (!closed.get()) onFailure(e)
             }

@@ -242,10 +242,17 @@ fun BarcodeScanScreen(navController: NavController, date: LocalDate?, meal: Meal
                 code = code,
                 aiKeyAvailable = uiState.aiKeyAvailable,
                 rescanLabel = if (cameraMode) "Erneut scannen" else "Anderen Barcode eingeben",
-                // Three separate callbacks: the integration step adds the requested action to each route.
-                onPhotoNutritionLabel = { leaveTo(customFoodRoute(code)) },
-                onWebSearch = { leaveTo(customFoodRoute(code)) },
-                onManualEntry = { leaveTo(customFoodRoute(code)) },
+                // Three separate callbacks (addendum §13). For now all open the custom-food form with the
+                // barcode prefilled; the integration step adds the requested action to each route.
+                onPhotoNutritionLabel = {
+                    leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))
+                },
+                onWebSearch = {
+                    leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))
+                },
+                onManualEntry = {
+                    leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))
+                },
                 onRescan = {
                     viewModel.resumeScanning()
                     if (!cameraMode) showManualDialog = true
@@ -289,10 +296,12 @@ private fun CameraScanLayer(
         val window = scanWindowFor(maxWidth, maxHeight)
         val cameraError = cameraState.error
         val success = status is ScanStatus.Found || (status is ScanStatus.Closing && status.success)
+        // Lookup states win over camera states: a typed-in code can be looked up while the camera fails.
         val overlayMode = when {
-            cameraError != null -> OverlayMode.IDLE
             success -> OverlayMode.SUCCESS
-            !cameraState.isStreaming || status is ScanStatus.LookingUp -> OverlayMode.BUSY
+            status is ScanStatus.LookingUp -> OverlayMode.BUSY
+            cameraError != null -> OverlayMode.IDLE
+            !cameraState.isStreaming -> OverlayMode.BUSY
             status is ScanStatus.Scanning -> OverlayMode.SCANNING
             else -> OverlayMode.IDLE
         }
@@ -317,23 +326,20 @@ private fun CameraScanLayer(
             contentAlignment = Alignment.Center,
         ) {
             when {
-                cameraError != null -> Icon(
-                    imageVector = Icons.Filled.VideocamOff,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(44.dp),
-                )
                 success -> Icon(
                     imageVector = Icons.Filled.CheckCircle,
                     contentDescription = null,
                     tint = ScannerAccent,
                     modifier = Modifier.size(56.dp),
                 )
-                !cameraState.isStreaming || status is ScanStatus.LookingUp -> CircularProgressIndicator(
-                    color = ScannerAccent,
-                    trackColor = Color.White.copy(alpha = 0.15f),
-                    strokeWidth = 3.dp,
+                status is ScanStatus.LookingUp -> ScanProgress()
+                cameraError != null -> Icon(
+                    imageVector = Icons.Filled.VideocamOff,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(44.dp),
                 )
+                !cameraState.isStreaming -> ScanProgress()
             }
         }
 
@@ -346,13 +352,7 @@ private fun CameraScanLayer(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             when {
-                cameraError != null -> Unit
                 success -> StatusText(title = "Produkt gefunden")
-                !cameraState.isStreaming -> StatusText(title = "Kamera wird gestartet …")
-                status is ScanStatus.Scanning -> StatusText(
-                    title = "Barcode in den Rahmen halten",
-                    text = "Wird automatisch erkannt · Tippe ins Bild zum Scharfstellen",
-                )
                 status is ScanStatus.LookingUp -> {
                     StatusText(title = "Produkt wird gesucht …")
                     Spacer(Modifier.height(8.dp))
@@ -366,6 +366,12 @@ private fun CameraScanLayer(
                         Text("Abbrechen", color = Color.White)
                     }
                 }
+                cameraError != null -> Unit
+                !cameraState.isStreaming -> StatusText(title = "Kamera wird gestartet …")
+                status is ScanStatus.Scanning -> StatusText(
+                    title = "Barcode in den Rahmen halten",
+                    text = "Wird automatisch erkannt · Tippe ins Bild zum Scharfstellen",
+                )
                 else -> Unit
             }
         }
@@ -383,19 +389,21 @@ private fun CameraScanLayer(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             when {
+                status is ScanStatus.Failed -> LookupErrorCard(
+                    status = status,
+                    rescanLabel = if (cameraError == null) "Weiter scannen" else "Schließen",
+                    onRetry = onRetry,
+                    onRescan = onRescan,
+                    onCreateManually = { onCreateManually(status.code) },
+                )
+                status is ScanStatus.Closing ||
+                    status is ScanStatus.Found ||
+                    status is ScanStatus.LookingUp -> Unit
                 cameraError != null -> CameraErrorCard(
                     message = cameraError,
                     onRetry = cameraState::retry,
                     onManualEntry = onManualEntry,
                 )
-                status is ScanStatus.Failed -> LookupErrorCard(
-                    status = status,
-                    rescanLabel = "Weiter scannen",
-                    onRetry = onRetry,
-                    onRescan = onRescan,
-                    onCreateManually = { onCreateManually(status.code) },
-                )
-                status is ScanStatus.Closing || status is ScanStatus.Found -> Unit
                 else -> {
                     if (detectorFailed) {
                         DetectorWarning()
@@ -417,6 +425,15 @@ private fun CameraScanLayer(
             }
         }
     }
+}
+
+@Composable
+private fun ScanProgress() {
+    CircularProgressIndicator(
+        color = ScannerAccent,
+        trackColor = Color.White.copy(alpha = 0.15f),
+        strokeWidth = 3.dp,
+    )
 }
 
 @Composable
@@ -478,8 +495,8 @@ private fun ScanCard(content: @Composable ColumnScope.() -> Unit) {
         contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier
-            .fillMaxWidth()
-            .widthIn(max = 480.dp),
+            .widthIn(max = 480.dp)
+            .fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(20.dp), content = content)
     }

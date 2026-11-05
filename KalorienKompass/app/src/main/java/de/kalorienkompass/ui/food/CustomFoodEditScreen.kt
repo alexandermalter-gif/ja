@@ -157,7 +157,6 @@ fun CustomFoodEditScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                     }
                 },
-
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -422,7 +421,7 @@ private fun GeneralCard(state: CustomFoodUiState, validation: FormValidation, vm
         Spacer(Modifier.height(12.dp))
         Text("Einheit", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
-        val units = listOf("g" to "Gramm (fest)", "ml" to "Milliliter (flüssig)")
+        val units = listOf("g" to "g · fest", "ml" to "ml · flüssig")
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             units.forEachIndexed { index, (unit, label) ->
                 SegmentedButton(

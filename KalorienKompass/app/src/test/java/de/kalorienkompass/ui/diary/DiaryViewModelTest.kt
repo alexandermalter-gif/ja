@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -90,7 +91,7 @@ class DiaryViewModelTest {
             nowMillis = { testScheduler.currentTime },
             ioDispatcher = dispatcher,
         )
-        backgroundScope.launch { vm.uiState.collect { } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
         return vm
     }
 
@@ -210,7 +211,7 @@ class DiaryViewModelTest {
     fun setWeight_validatesRange_andIgnoresFutureDays() = runTest(dispatcher) {
         val messages = mutableListOf<DiaryEvent>()
         val vm = createViewModel()
-        backgroundScope.launch { vm.events.collect { messages += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { messages += it } }
         advanceUntilIdle()
 
         vm.setWeight(5.0)
@@ -272,7 +273,7 @@ class DiaryViewModelTest {
         syncResult = HealthSyncResult(success = false, message = "Berechtigungen fehlen.")
         val messages = mutableListOf<DiaryEvent>()
         val vm = createViewModel()
-        backgroundScope.launch { vm.events.collect { messages += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { messages += it } }
 
         vm.refresh(userInitiated = true)
         advanceUntilIdle()
@@ -289,7 +290,7 @@ class DiaryViewModelTest {
     fun noAutomaticSource_manualRefreshExplainsWhy() = runTest(dispatcher) {
         val messages = mutableListOf<DiaryEvent>()
         val vm = createViewModel()
-        backgroundScope.launch { vm.events.collect { messages += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { messages += it } }
         vm.onScreenStarted()
         advanceUntilIdle()
         assertTrue(messages.isEmpty())

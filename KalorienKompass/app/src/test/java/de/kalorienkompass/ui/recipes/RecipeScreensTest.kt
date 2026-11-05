@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.navigation.NavHostController
@@ -195,8 +196,15 @@ class RecipeScreensTest {
 
         // A new recipe opens its detail page (replacing the editor).
         compose.mainClock.advanceTimeBy(300)
-        println("DEBUGSNACK " + compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes().mapNotNull { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString() }.filter { it.contains("Rezept") || it.contains("gespeichert") || it.contains("Zutat") }.joinToString(" | "))
-        println("DEBUGDB " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name + "/" + it.ingredients.size })
+        compose.waitForIdle()
+        println("DEBUGDB-after-touch " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name })
+        val bounds = compose.onNodeWithText("Rezept speichern").fetchSemanticsNode().boundsInRoot
+        println("DEBUGBOUNDS " + bounds + " root=" + compose.onRoot().fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithText("Rezept speichern").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitForIdle()
+        Thread.sleep(500)
+        compose.waitForIdle()
+        println("DEBUGDB-after-action " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name } + " route=" + currentRoute())
         try { waitForText("pro Portion") } catch (e: Throwable) {
             println("DEBUGDB2 " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name + "/" + it.ingredients.size })
             println("DEBUGTREE route=" + currentRoute())

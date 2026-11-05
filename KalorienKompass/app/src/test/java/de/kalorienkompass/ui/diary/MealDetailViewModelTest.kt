@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -56,8 +57,8 @@ class MealDetailViewModelTest {
     private fun TestScope.createViewModel(meal: MealType = MealType.BREAKFAST, date: LocalDate = today): Fixture {
         val vm = MealDetailViewModel(date, meal, diary, flowOf(TEST_TARGETS))
         val events = mutableListOf<MealDetailEvent>()
-        backgroundScope.launch { vm.uiState.collect { } }
-        backgroundScope.launch { vm.events.collect { events += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect { } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { events += it } }
         return Fixture(vm, events)
     }
 

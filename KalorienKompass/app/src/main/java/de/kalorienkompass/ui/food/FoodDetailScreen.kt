@@ -134,6 +134,8 @@ fun FoodDetailScreen(navController: NavController, foodId: Long, date: LocalDate
         val f = food ?: return@action
         val o = option ?: return@action
         val a = amount ?: return@action
+        // ignore a second tap while the screen is already being left
+        if (navController.currentBackStackEntry?.destination?.route != Routes.FOOD_DETAIL) return@action
         if (pickMode) {
             returnPickedFood(navController, f.id, a * o.gramsPerUnit)
         } else {
@@ -575,24 +577,27 @@ private fun MacroTile(label: String, grams: Double?, color: Color, modifier: Mod
             .background(color.copy(alpha = 0.12f))
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ColorDot(color)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .width(18.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color),
+        )
+        Spacer(Modifier.height(8.dp))
         Text(
             text = grams?.let { "${formatGrams(it)} g" } ?: "–",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -804,12 +809,19 @@ internal fun BottomActionBar(
                         Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(label, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     if (detail != null) {
                         Text(
                             text = "  ·  $detail",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Normal,
+                            maxLines = 1,
                         )
                     }
                 }

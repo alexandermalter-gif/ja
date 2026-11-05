@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -459,7 +460,12 @@ internal fun FoodList(
 ) {
     when {
         foods == null -> LoadingBox(modifier = modifier)
-        foods.isEmpty() -> Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) { empty() }
+        foods.isEmpty() -> Box(
+            modifier = modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            contentAlignment = Alignment.TopCenter,
+        ) { empty() }
         else -> LazyColumn(
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottomPadding.dp),
@@ -568,7 +574,10 @@ private fun LazyListScope.remoteSection(
 ) {
     when (remote.status) {
         RemoteStatus.IDLE -> item(key = "remote_idle") {
-            if (query.length >= 2) {
+            if (query.length >= 3) {
+                // the debounced search starts in a moment
+                InlineProgress("Suche in Open Food Facts …")
+            } else if (query.length == 2) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HintText(
                         text = "Ab 3 Zeichen wird auch Open Food Facts durchsucht.",
