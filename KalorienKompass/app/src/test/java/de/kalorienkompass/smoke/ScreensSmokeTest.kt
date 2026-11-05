@@ -3,6 +3,7 @@ package de.kalorienkompass.smoke
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import de.kalorienkompass.data.model.MealType
@@ -209,6 +210,33 @@ class ScreensSmokeTest {
             actions = listOf("Im Web suchen", "Nährwerttabelle", "Speichern", "Zurück"),
             screenshotAfter = setOf("Im Web suchen", "Nährwerttabelle", "Speichern"),
         ) { Routes.customFood(barcode = TestData.UNKNOWN_BARCODE, date = data.today, meal = MealType.SNACK) }
+    }
+
+    /** Scanner → "Im Web suchen (KI)" without API key: the form shows the key guidance, nothing is sent. */
+    @Test
+    fun customFoodEdit_autoWebSearchWithoutKey() {
+        autoActionWithoutKey(Routes.CUSTOM_FOOD_ACTION_WEB)
+    }
+
+    /** Scanner → "Nährwerttabelle fotografieren" without API key: key guidance instead of the camera. */
+    @Test
+    fun customFoodEdit_autoLabelPhotoWithoutKey() {
+        autoActionWithoutKey(Routes.CUSTOM_FOOD_ACTION_LABEL)
+    }
+
+    private fun autoActionWithoutKey(action: String) {
+        smoke(
+            "CustomFoodEdit-auto-$action",
+            actions = listOf("Zu den Einstellungen", "Zurück"),
+            beforeActions = { name ->
+                val guidance = composeRule
+                    .onAllNodesWithText("API-Schlüssel benötigt", substring = true)
+                    .fetchSemanticsNodes()
+                assertTrue("$name: no-key guidance shown", guidance.isNotEmpty())
+            },
+        ) {
+            Routes.customFood(barcode = TestData.UNKNOWN_BARCODE, date = data.today, meal = MealType.SNACK, action = action)
+        }
     }
 
     // ---- scan / AI -----------------------------------------------------------------------------

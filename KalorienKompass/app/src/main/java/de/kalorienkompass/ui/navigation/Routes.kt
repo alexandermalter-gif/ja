@@ -39,13 +39,21 @@ object Routes {
     fun foodDetail(foodId: Long, date: LocalDate?, meal: MealType?, pick: Boolean = false): String =
         withQuery("food_detail/$foodId", "date" to date?.toEpochDay(), "meal" to meal?.name, "pick" to pick.orNull())
 
-    const val CUSTOM_FOOD = "custom_food?foodId={foodId}&barcode={barcode}&date={date}&meal={meal}&pick={pick}"
+    const val CUSTOM_FOOD =
+        "custom_food?foodId={foodId}&barcode={barcode}&date={date}&meal={meal}&pick={pick}&action={action}"
+
+    /**
+     * [action]: flow to start automatically once when the form opens (spec §13) –
+     * [CUSTOM_FOOD_ACTION_LABEL] (photo of the nutrition table), [CUSTOM_FOOD_ACTION_WEB] (web search)
+     * or "" (manual entry, default).
+     */
     fun customFood(
         foodId: Long? = null,
         barcode: String? = null,
         date: LocalDate? = null,
         meal: MealType? = null,
         pick: Boolean = false,
+        action: String = "",
     ): String = withQuery(
         "custom_food",
         "foodId" to foodId?.takeIf { it > 0L },
@@ -53,7 +61,11 @@ object Routes {
         "date" to date?.toEpochDay(),
         "meal" to meal?.name,
         "pick" to pick.orNull(),
+        "action" to action.trim().takeIf { it.isNotEmpty() },
     )
+
+    const val CUSTOM_FOOD_ACTION_LABEL = "label"
+    const val CUSTOM_FOOD_ACTION_WEB = "web"
 
     const val RECIPE_EDIT = "recipe_edit?recipeId={recipeId}"
     fun recipeEdit(recipeId: Long? = null): String =

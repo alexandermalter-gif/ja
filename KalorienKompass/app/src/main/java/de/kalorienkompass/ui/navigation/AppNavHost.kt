@@ -205,6 +205,7 @@ fun AppNavHost(
                     args.optDate("date"),
                     args.optMeal("meal"),
                     args.flag("pick"),
+                    args.optString("action").orEmpty(),
                 )
             }
 
@@ -330,6 +331,7 @@ internal object NavArguments {
         optionalLong("date"),
         optionalString("meal"),
         flag("pick"),
+        optionalString("action"),
     )
     val RECIPE_EDIT = listOf(optionalLong("recipeId"))
     val RECIPE_DETAIL = listOf(requiredLong("recipeId"), optionalLong("date"), optionalString("meal"))

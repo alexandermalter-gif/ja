@@ -242,13 +242,23 @@ fun BarcodeScanScreen(navController: NavController, date: LocalDate?, meal: Meal
                 code = code,
                 aiKeyAvailable = uiState.aiKeyAvailable,
                 rescanLabel = if (cameraMode) "Erneut scannen" else "Anderen Barcode eingeben",
-                // Three separate callbacks (addendum §13). For now all open the custom-food form with the
-                // barcode prefilled; the integration step adds the requested action to each route.
+                // Three separate callbacks (addendum §13): all open the custom-food form with the barcode
+                // prefilled; the action starts the matching AI flow there once.
                 onPhotoNutritionLabel = {
-                    leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))
+                    leaveTo(
+                        Routes.customFood(
+                            barcode = code, date = date, meal = meal, pick = pickMode,
+                            action = Routes.CUSTOM_FOOD_ACTION_LABEL,
+                        ),
+                    )
                 },
                 onWebSearch = {
-                    leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))
+                    leaveTo(
+                        Routes.customFood(
+                            barcode = code, date = date, meal = meal, pick = pickMode,
+                            action = Routes.CUSTOM_FOOD_ACTION_WEB,
+                        ),
+                    )
                 },
                 onManualEntry = {
                     leaveTo(Routes.customFood(barcode = code, date = date, meal = meal, pick = pickMode))

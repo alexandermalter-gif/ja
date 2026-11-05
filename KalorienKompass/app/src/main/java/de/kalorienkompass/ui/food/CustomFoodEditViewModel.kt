@@ -1,18 +1,38 @@
 package de.kalorienkompass.ui.food
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import de.kalorienkompass.ai.AiErrorKind
+import de.kalorienkompass.ai.AiErrors
+import de.kalorienkompass.ai.AiException
+import de.kalorienkompass.ai.ImagePreprocessor
+import de.kalorienkompass.ai.lookup.NutritionLabelReader
+import de.kalorienkompass.ai.lookup.NutritionLookupResult
+import de.kalorienkompass.ai.lookup.ProductWebSearch
 import de.kalorienkompass.data.db.FoodEntity
 import de.kalorienkompass.data.repo.FoodRepository
 import de.kalorienkompass.util.formatInput
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -35,9 +55,36 @@ internal data class CustomFoodUiState(
     val assistNotice: String? = null,
     /** source URLs shown below [assistNotice] */
     val assistSources: List<String> = emptyList(),
+    /** state of the AI lookup ("Nährwerttabelle fotografieren" / "Im Web suchen (KI)") */
+    val assist: AssistState = AssistState.Idle,
 ) {
     val isEditing: Boolean get() = original != null
     val isDirty: Boolean get() = form != initialForm
+}
+
+/** Which AI lookup (spec §13). */
+internal enum class AssistKind { LABEL, WEB }
+
+/** State of the AI lookup on the custom food form. */
+internal sealed interface AssistState {
+    data object Idle : AssistState
+
+    /** Request running; [photo] = preview of the nutrition table photo (LABEL only, once prepared). */
+    data class Running(val kind: AssistKind, val photo: Bitmap? = null) : AssistState
+
+    /** No API key stored → show the "no key" guidance with a button to the settings. */
+    data object MissingKey : AssistState
+
+    /**
+     * The lookup failed or found nothing. [message] is German; [opensSettings] = offer the settings
+     * (invalid key, no access); [canRetry] = "Erneut versuchen" makes sense.
+     */
+    data class Failed(
+        val kind: AssistKind,
+        val message: String,
+        val opensSettings: Boolean = false,
+        val canRetry: Boolean = true,
+    ) : AssistState
 }
 
 /**
@@ -53,6 +100,11 @@ class CustomFoodEditViewModel internal constructor(
     initialBarcode: String?,
     private val foodRepository: FoodRepository,
     private val savedState: SavedStateHandle,
+    /** application context (photo decoding); null disables the label reader */
+    private val appContext: Context? = null,
+    private val labelReader: NutritionLabelReader? = null,
+    private val webSearch: ProductWebSearch? = null,
+    apiKey: Flow<String?> = flowOf(null),
 ) : ViewModel() {
 
     internal var state: CustomFoodUiState by mutableStateOf(CustomFoodUiState())
@@ -66,6 +118,17 @@ class CustomFoodEditViewModel internal constructor(
 
     /** Unit was set explicitly by [prefill] – a slower DB load must not overwrite it. */
     private var unitPrefilled = false
+
+    /** true/false once known, null while loading. */
+    internal val hasApiKey: StateFlow<Boolean?> = apiKey
+        .map { !it.isNullOrBlank() }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private var assistJob: Job? = null
+
+    /** JPEG of the last nutrition table photo (for "Erneut versuchen"). */
+    private var lastLabelJpeg: ByteArray? = null
 
     init {
         val restored = savedState.get<String>(KEY_FORM)?.let { stored ->
@@ -234,6 +297,187 @@ class CustomFoodEditViewModel internal constructor(
 
     internal fun dismissAssistNotice() = showAssistNotice(null)
 
+    // ---------------------------------------------------------------------------------------------
+    // AI lookup (spec §13): photo of the nutrition table / web search → prefill (never saves)
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * True exactly once per screen (survives recreation): whether the action requested by the route
+     * (`action=label|web`) should be started now.
+     */
+    internal fun consumeAutoAction(): Boolean {
+        if (savedState.get<Boolean>(KEY_AUTO_ACTION_DONE) == true) return false
+        savedState[KEY_AUTO_ACTION_DONE] = true
+        return true
+    }
+
+    /** False (and the "no key" guidance is shown) if no API key is stored. */
+    internal fun ensureApiKey(): Boolean {
+        if (hasApiKey.value == false) {
+            state = state.copy(assist = AssistState.MissingKey)
+            return false
+        }
+        return true
+    }
+
+    internal val isAssistRunning: Boolean get() = state.assist is AssistState.Running
+
+    /** Photo taken with the camera into [file] (deleted after reading). */
+    internal fun onLabelPhotoCaptured(file: File) = readLabel(Uri.fromFile(file), deleteAfterReading = file)
+
+    /** Photo chosen from the gallery. */
+    internal fun onLabelPhotoPicked(uri: Uri) = readLabel(uri, deleteAfterReading = null)
+
+    private fun readLabel(uri: Uri, deleteAfterReading: File?) {
+        val context = appContext
+        val reader = labelReader
+        if (context == null || reader == null) {
+            state = state.copy(assist = AssistState.Failed(AssistKind.LABEL, UNAVAILABLE_MESSAGE, canRetry = false))
+            return
+        }
+        assistJob?.cancel()
+        state = state.copy(assist = AssistState.Running(AssistKind.LABEL))
+        assistJob = viewModelScope.launch {
+            val prepared = try {
+                ImagePreprocessor.prepare(context, uri)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showAssistError(AssistKind.LABEL, AiErrors.from(e), canRetry = false)
+                return@launch
+            } finally {
+                if (deleteAfterReading != null) withContext(Dispatchers.IO) { deleteAfterReading.delete() }
+            }
+            lastLabelJpeg = prepared.jpeg
+            state = state.copy(assist = AssistState.Running(AssistKind.LABEL, prepared.bitmap))
+            runLabel(reader, prepared.jpeg)
+        }
+    }
+
+    private suspend fun runLabel(reader: NutritionLabelReader, jpeg: ByteArray) {
+        try {
+            val result = reader.read(jpeg)
+            applyLookupResult(result, AssistKind.LABEL)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            showAssistError(AssistKind.LABEL, AiErrors.from(e))
+        }
+    }
+
+    /** Web research by the barcode and/or the name (+ brand) currently in the form. */
+    internal fun startWebSearch() {
+        val search = webSearch
+        if (search == null) {
+            state = state.copy(assist = AssistState.Failed(AssistKind.WEB, UNAVAILABLE_MESSAGE, canRetry = false))
+            return
+        }
+        val barcode = currentBarcode
+        val nameHint = listOf(state.form.brand.trim(), state.form.name.trim())
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .joinToString(" ")
+            .takeIf { it.isNotEmpty() }
+        if (barcode == null && nameHint == null) {
+            state = state.copy(
+                assist = AssistState.Failed(
+                    AssistKind.WEB,
+                    "Gib zuerst einen Barcode oder den Produktnamen (am besten mit Marke) ein – danach kann die KI suchen.",
+                    canRetry = false,
+                ),
+            )
+            return
+        }
+        assistJob?.cancel()
+        state = state.copy(assist = AssistState.Running(AssistKind.WEB))
+        assistJob = viewModelScope.launch {
+            try {
+                val result = search.search(barcode, nameHint)
+                if (result == null) {
+                    state = state.copy(
+                        assist = AssistState.Failed(
+                            AssistKind.WEB,
+                            "Die KI hat im Web keine verlässlichen Nährwerte zu diesem Produkt gefunden. " +
+                                "Fotografiere am besten die Nährwerttabelle oder gib die Werte manuell ein.",
+                        ),
+                    )
+                } else {
+                    applyLookupResult(result, AssistKind.WEB)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showAssistError(AssistKind.WEB, AiErrors.from(e))
+            }
+        }
+    }
+
+    /** "Erneut versuchen" after a failure: repeats the web search or the last photo. */
+    internal fun retryAssist(): Boolean {
+        val failed = state.assist as? AssistState.Failed ?: return false
+        return when (failed.kind) {
+            AssistKind.WEB -> {
+                startWebSearch()
+                true
+            }
+            AssistKind.LABEL -> {
+                val jpeg = lastLabelJpeg
+                val reader = labelReader
+                if (jpeg == null || reader == null) return false // caller opens the camera again
+                assistJob?.cancel()
+                state = state.copy(assist = AssistState.Running(AssistKind.LABEL))
+                assistJob = viewModelScope.launch { runLabel(reader, jpeg) }
+                true
+            }
+        }
+    }
+
+    internal fun cancelAssist() {
+        assistJob?.cancel()
+        assistJob = null
+        state = state.copy(assist = AssistState.Idle)
+    }
+
+    internal fun dismissAssist() {
+        if (state.assist !is AssistState.Running) state = state.copy(assist = AssistState.Idle)
+    }
+
+    private fun showAssistError(kind: AssistKind, error: AiException, canRetry: Boolean = error.isRetryable) {
+        state = if (error.kind == AiErrorKind.MISSING_KEY) {
+            state.copy(assist = AssistState.MissingKey)
+        } else {
+            state.copy(
+                assist = AssistState.Failed(
+                    kind = kind,
+                    message = error.message ?: "Die KI-Anfrage ist fehlgeschlagen.",
+                    opensSettings = error.opensSettings,
+                    canRetry = canRetry,
+                ),
+            )
+        }
+    }
+
+    /** Prefills the form (never saves) and shows the disclaimer, notes and sources. */
+    private fun applyLookupResult(result: NutritionLookupResult, kind: AssistKind) {
+        prefill(
+            name = result.name,
+            brand = result.brand,
+            unit = result.unit,
+            kcal = result.kcal,
+            fat = result.fat,
+            carbs = result.carbs,
+            sugar = result.sugar,
+            fiber = result.fiber,
+            protein = result.protein,
+            salt = result.salt,
+            servingName = result.servingName,
+            servingGrams = result.servingGrams,
+        )
+        state = state.copy(assist = AssistState.Idle, showErrors = false)
+        showAssistNotice(lookupNotice(result, kind), result.sources)
+        _message.value = if (kind == AssistKind.LABEL) "Werte aus dem Foto übernommen" else "Werte aus dem Web übernommen"
+    }
+
     /** Validates and saves; [onSaved] receives the food id. */
     internal fun save(onSaved: (Long) -> Unit) {
         if (state.saving || state.loading) return
@@ -307,6 +551,36 @@ class CustomFoodEditViewModel internal constructor(
     companion object {
         private const val KEY_FORM = "custom_food_form"
         private const val KEY_INITIAL_FORM = "custom_food_initial_form"
+        private const val KEY_AUTO_ACTION_DONE = "custom_food_auto_action_done"
         const val DEFAULT_PREFILL_NOTICE = "Werte wurden automatisch übernommen – bitte vor dem Speichern prüfen."
+        private const val UNAVAILABLE_MESSAGE = "Diese KI-Funktion ist gerade nicht verfügbar."
+    }
+}
+
+/** Disclaimer shown after an AI lookup (spec §13), plus what is uncertain or missing. */
+internal fun lookupNotice(result: NutritionLookupResult, kind: AssistKind): String = buildString {
+    append(
+        if (kind == AssistKind.LABEL) {
+            "Von der KI gelesen – bitte Werte mit der Packung abgleichen."
+        } else {
+            "Von der KI recherchiert – bitte Werte mit der Packung abgleichen."
+        },
+    )
+    val missing = listOfNotNull(
+        "Energie".takeIf { result.kcal == null },
+        "Fett".takeIf { result.fat == null },
+        "Kohlenhydrate".takeIf { result.carbs == null },
+        "Eiweiß".takeIf { result.protein == null },
+    )
+    if (missing.isNotEmpty()) {
+        append(" Nicht gefunden: ")
+        append(missing.joinToString(", "))
+        append(" – bitte ergänzen.")
+    }
+    if (!result.confident) append(" Die KI war sich nicht bei allen Werten sicher.")
+    val notes = result.notes.trim()
+    if (notes.isNotEmpty()) {
+        append("\nHinweis der KI: ")
+        append(notes)
     }
 }

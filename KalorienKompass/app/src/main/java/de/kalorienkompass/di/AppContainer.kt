@@ -3,6 +3,8 @@ package de.kalorienkompass.di
 import android.content.Context
 import de.kalorienkompass.KalorienApp
 import de.kalorienkompass.ai.FoodPhotoAnalyzer
+import de.kalorienkompass.ai.lookup.NutritionLabelReader
+import de.kalorienkompass.ai.lookup.ProductWebSearch
 import de.kalorienkompass.backup.BackupManager
 import de.kalorienkompass.data.builtin.BuiltinFoodSeeder
 import de.kalorienkompass.data.db.AppDatabase
@@ -69,6 +71,12 @@ class AppContainer(val context: Context) {
     val stepSensorTracker: StepSensorTracker = StepSensorTracker(context, activityRepository, settingsRepository)
 
     val foodPhotoAnalyzer: FoodPhotoAnalyzer = FoodPhotoAnalyzer(settingsRepository, json)
+
+    /** Reads a photo of a package's nutrition table (spec §13). */
+    val nutritionLabelReader: NutritionLabelReader = NutritionLabelReader(settingsRepository, json)
+
+    /** Researches unknown products on the web by barcode/name (spec §13). */
+    val productWebSearch: ProductWebSearch = ProductWebSearch(settingsRepository, json)
 
     val backupManager: BackupManager = BackupManager(context, database, settingsRepository, json)
 

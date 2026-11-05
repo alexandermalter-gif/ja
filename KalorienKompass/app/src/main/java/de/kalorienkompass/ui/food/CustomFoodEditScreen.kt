@@ -43,8 +43,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -54,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,12 +83,17 @@ import de.kalorienkompass.ui.components.isAcceptableDecimalInput
 import de.kalorienkompass.ui.navigation.Routes
 import de.kalorienkompass.util.formatKcal
 import de.kalorienkompass.util.parseDecimal
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
  * Create ([foodId] == null) or edit an own food. Opened with [barcode] for products that are unknown
  * locally and at Open Food Facts. After saving a NEW food with date/meal, in pick mode or with a
  * scanned barcode, the food detail screen of the saved food replaces this screen.
+ *
+ * [action] (spec §13): [Routes.CUSTOM_FOOD_ACTION_LABEL] starts "Nährwerttabelle fotografieren",
+ * [Routes.CUSTOM_FOOD_ACTION_WEB] starts "Im Web suchen (KI)" once when the screen opens; AI results
+ * only prefill the form – saving stays a deliberate tap on "Speichern".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,17 +104,29 @@ fun CustomFoodEditScreen(
     date: LocalDate?,
     meal: MealType?,
     pickMode: Boolean,
+    action: String = "",
 ) {
     val vm: CustomFoodEditViewModel = viewModel(
         key = "custom_food_${foodId}_$barcode",
         factory = foodViewModelFactory { container, handle ->
-            CustomFoodEditViewModel(foodId, barcode, container.foodRepository, handle)
+            CustomFoodEditViewModel(
+                foodId = foodId,
+                initialBarcode = barcode,
+                foodRepository = container.foodRepository,
+                savedState = handle,
+                appContext = container.context,
+                labelReader = container.nutritionLabelReader,
+                webSearch = container.productWebSearch,
+                apiKey = container.settingsRepository.aiApiKey,
+            )
         },
     )
     val state = vm.state
     val validation = vm.validation
     val message by vm.message.collectAsStateWithLifecycle()
+    val hasApiKey by vm.hasApiKey.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
 
@@ -124,6 +144,39 @@ fun CustomFoodEditScreen(
     }
 
     BackHandler(enabled = state.isDirty && !state.saving) { confirmDiscard = true }
+    // Declared later → wins while a lookup runs: back cancels it first.
+    BackHandler(enabled = state.assist is AssistState.Running) { vm.cancelAssist() }
+
+    // --- AI lookup (spec §13) ---------------------------------------------------------------------
+    val photoLauncher = rememberLabelPhotoLauncher(
+        onCaptured = vm::onLabelPhotoCaptured,
+        onPicked = vm::onLabelPhotoPicked,
+        onMessage = { text, actionLabel, onAction ->
+            scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val result = snackbarHostState.showSnackbar(
+                    message = text,
+                    actionLabel = actionLabel,
+                    duration = if (actionLabel != null) SnackbarDuration.Long else SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) onAction?.invoke()
+            }
+        },
+    )
+    val onTakeLabelPhoto: () -> Unit = { if (vm.ensureApiKey()) photoLauncher.takePhoto() }
+    val onPickLabelPhoto: () -> Unit = { if (vm.ensureApiKey()) photoLauncher.pickPhoto() }
+    val onWebSearch: () -> Unit = { if (vm.ensureApiKey()) vm.startWebSearch() }
+    val onRetryAssist: () -> Unit = { if (!vm.retryAssist()) onTakeLabelPhoto() }
+    val openSettings: () -> Unit = { navController.navigate(Routes.SETTINGS) }
+
+    // Requested by the route (e.g. "Nährwerttabelle fotografieren" in the scanner): start once, as soon
+    // as it is known whether a key is stored (no key → guidance instead of camera/request).
+    LaunchedEffect(action, hasApiKey, state.loading) {
+        if (hasApiKey == null || state.loading || state.notFound) return@LaunchedEffect
+        if (action != Routes.CUSTOM_FOOD_ACTION_LABEL && action != Routes.CUSTOM_FOOD_ACTION_WEB) return@LaunchedEffect
+        if (!vm.consumeAutoAction()) return@LaunchedEffect
+        if (action == Routes.CUSTOM_FOOD_ACTION_LABEL) onTakeLabelPhoto() else onWebSearch()
+    }
 
     val onSaved: (Long) -> Unit = { id ->
         val continueToDetail = foodId == null && (pickMode || (date != null && meal != null) || barcode != null)
@@ -200,10 +253,21 @@ fun CustomFoodEditScreen(
                 CustomFoodTopSection(
                     state = state,
                     onDismissNotice = vm::dismissAssistNotice,
-                    // Integration point: pass `actions = { ... }` with the AI buttons (e.g. a Row of two
-                    // OutlinedButtons). They call vm.prefill(...) / vm.showAssistNotice(...); saving stays
-                    // a deliberate tap on "Speichern".
-                    actions = null,
+                    // AI buttons: results only prefill the form (vm.prefill + notice); saving stays a
+                    // deliberate tap on "Speichern".
+                    actions = {
+                        CustomFoodAssistActions(
+                            assist = state.assist,
+                            enabled = !state.saving && !state.deleting,
+                            onTakePhoto = onTakeLabelPhoto,
+                            onPickPhoto = onPickLabelPhoto,
+                            onWebSearch = onWebSearch,
+                            onRetry = onRetryAssist,
+                            onCancel = vm::cancelAssist,
+                            onDismiss = vm::dismissAssist,
+                            onOpenSettings = openSettings,
+                        )
+                    },
                 )
 
                 GeneralCard(state = state, validation = validation, vm = vm)
