@@ -3,6 +3,7 @@ package de.kalorienkompass.data.remote.off
 import de.kalorienkompass.data.db.FoodEntity
 import de.kalorienkompass.data.model.FoodPortion
 import de.kalorienkompass.data.model.FoodSource
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -22,10 +23,8 @@ import kotlin.math.roundToLong
  */
 object OffParser {
 
-    private val json = Json {
-        isLenient = true
-        ignoreUnknownKeys = true
-    }
+    /** Strict JSON syntax (an HTML error page must not parse); leniency is applied per field. */
+    private val json = Json { ignoreUnknownKeys = true }
 
     /** kJ per kcal. */
     private const val KJ_PER_KCAL = 4.184
@@ -62,10 +61,10 @@ object OffParser {
      * Parses the response of `GET /api/v2/product/{code}` (`{"status":1,"product":{...}}`).
      * Returns null for "product not found" (status 0) and for unusable products.
      * [requestedBarcode] is used when the product itself has no `code`.
-     * Throws [kotlinx.serialization.SerializationException] (an [IllegalArgumentException]) if [body] is not JSON.
+     * Throws [SerializationException] (an [IllegalArgumentException]) if [body] is not a JSON object.
      */
     fun parseProductResponse(body: String, requestedBarcode: String? = null): FoodEntity? {
-        val root = json.parseToJsonElement(body) as? JsonObject ?: return null
+        val root = parseRoot(body)
         if (!isFoundStatus(root["status"])) return null
         val product = root["product"] as? JsonObject ?: return null
         return parseProduct(product, fallbackBarcode = root.string("code") ?: requestedBarcode)
@@ -74,10 +73,10 @@ object OffParser {
     /**
      * Parses the response of `GET /cgi/search.pl?...&json=1` (`{"products":[...]}`).
      * Unusable products are skipped; duplicates (same barcode) are removed.
-     * Throws [kotlinx.serialization.SerializationException] if [body] is not JSON.
+     * Throws [SerializationException] if [body] is not a JSON object.
      */
     fun parseSearchResponse(body: String): List<FoodEntity> {
-        val root = json.parseToJsonElement(body) as? JsonObject ?: return emptyList()
+        val root = parseRoot(body)
         val products = root["products"] as? JsonArray ?: return emptyList()
         val seenCodes = HashSet<String>()
         return products.mapNotNull { element ->
@@ -86,6 +85,14 @@ object OffParser {
             if (code != null && !seenCodes.add(code)) null else food
         }
     }
+
+    /**
+     * The API always answers with a JSON object. Anything else (e.g. an HTML maintenance page, which
+     * kotlinx.serialization may even accept as an unquoted literal) is rejected.
+     */
+    private fun parseRoot(body: String): JsonObject =
+        json.parseToJsonElement(body) as? JsonObject
+            ?: throw SerializationException("Open Food Facts: unerwartete Antwort (kein JSON-Objekt)")
 
     /** status 1 / "1" / "success" / "product found" (or no status at all) means "found". */
     private fun isFoundStatus(status: JsonElement?): Boolean {

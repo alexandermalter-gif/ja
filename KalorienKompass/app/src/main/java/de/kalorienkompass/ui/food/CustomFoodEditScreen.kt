@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -158,16 +157,7 @@ fun CustomFoodEditScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                     }
                 },
-                actions = {
-                    if (state.isEditing) {
-                        IconButton(onClick = { confirmDelete = true }, enabled = !state.deleting) {
-                            Icon(Icons.Outlined.Delete, contentDescription = "Löschen")
-                        }
-                    }
-                    TextButton(onClick = { vm.save(onSaved) }, enabled = !state.saving && !state.loading && !state.notFound) {
-                        Text("Speichern")
-                    }
-                },
+
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },

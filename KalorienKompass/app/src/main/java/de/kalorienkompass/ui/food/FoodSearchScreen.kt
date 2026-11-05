@@ -132,6 +132,7 @@ fun FoodSearchScreen(navController: NavController, date: LocalDate?, meal: MealT
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     // Date/meal for quick entries and the photo AI when the search was opened without them.
     val effectiveDate = date ?: LocalDate.now()
@@ -237,6 +238,8 @@ fun FoodSearchScreen(navController: NavController, date: LocalDate?, meal: MealT
             if (vm.query.isBlank()) {
                 EmptyQueryContent(
                     navController = navController,
+                    selectedIndex = selectedTab,
+                    onSelect = { selectedTab = it },
                     pickMode = pickMode,
                     date = date,
                     meal = meal,
@@ -377,6 +380,8 @@ private fun ShortcutChip(label: String, icon: ImageVector, onClick: () -> Unit) 
 @Composable
 private fun EmptyQueryContent(
     navController: NavController,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
     pickMode: Boolean,
     date: LocalDate?,
     meal: MealType?,
@@ -389,14 +394,13 @@ private fun EmptyQueryContent(
     val tabs = remember(pickMode) {
         if (pickMode) listOf(SearchTab.RECENT, SearchTab.FAVORITES, SearchTab.CUSTOM) else SearchTab.entries.toList()
     }
-    var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     val selected = tabs[selectedIndex.coerceIn(0, tabs.lastIndex)]
 
     Column(modifier = Modifier.fillMaxSize()) {
         FoodTabsRow(
             labels = tabs.map { it.label },
             selectedIndex = tabs.indexOf(selected),
-            onSelect = { selectedIndex = it },
+            onSelect = onSelect,
         )
         when (selected) {
             SearchTab.RECENT -> FoodList(

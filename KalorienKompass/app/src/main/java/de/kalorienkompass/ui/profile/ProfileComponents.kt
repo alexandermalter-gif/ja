@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
@@ -544,18 +546,7 @@ internal fun DecimalInputField(
     )
 }
 
-/** Field error/hint line below custom inputs. */
-@Composable
-internal fun FieldMessage(text: String, isError: Boolean, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 16.dp, top = 4.dp),
-    )
-}
-
-/** German overview of a backup's content, e.g. "Erstellt am 03.11.2026, 14:05 · 120 Tagebucheinträge …". */
+/** German overview of a backup's content: creation time and one bullet line per data type. */
 internal fun backupContentText(summary: BackupSummary): String = buildString {
     summary.exportedAtMillis?.let { append("Erstellt am ").append(formatDateTime(it)).append('\n') }
     val parts = listOf(
@@ -583,7 +574,10 @@ internal fun BackupImportConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text("Backup importieren?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text = backupContentText(summary),
                     style = MaterialTheme.typography.bodyMedium,

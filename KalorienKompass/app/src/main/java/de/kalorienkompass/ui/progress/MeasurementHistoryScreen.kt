@@ -68,7 +68,6 @@ private const val HEALTH_CONNECT_EDIT_HINT =
         "Ändern kannst du ihn in Honor Health bzw. Health Connect."
 
 /** All values of one body measurement: chart (all data) + list grouped by month, newest first. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeasurementHistoryScreen(navController: NavController, type: MeasurementType) {
     val viewModel: MeasurementHistoryViewModel = viewModel(
@@ -77,6 +76,16 @@ fun MeasurementHistoryScreen(navController: NavController, type: MeasurementType
             MeasurementHistoryViewModel(type, c.measurementRepository, c.settingsRepository)
         },
     )
+    MeasurementHistoryScreen(navController = navController, type = type, viewModel = viewModel)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun MeasurementHistoryScreen(
+    navController: NavController,
+    type: MeasurementType,
+    viewModel: MeasurementHistoryViewModel,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf<HistoryDialog?>(null) }
@@ -192,7 +201,7 @@ fun MeasurementHistoryScreen(navController: NavController, type: MeasurementType
 }
 
 @Composable
-private fun HistoryList(
+internal fun HistoryList(
     content: HistoryContent,
     padding: PaddingValues,
     onEntryClick: (MeasurementEntity) -> Unit,

@@ -25,7 +25,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
@@ -92,6 +94,7 @@ fun LineChart(
     val tooltipValueStyle = typography.labelLarge.copy(color = colors.inverseOnSurface, fontWeight = FontWeight.Bold)
     val gridColor = colors.outline.copy(alpha = 0.55f)
     val surfaceColor = colors.surface
+    val labelBackdrop = colors.surface.copy(alpha = 0.85f)
     val tooltipBackground = colors.inverseSurface
 
     val progress = remember { Animatable(0f) }
@@ -101,6 +104,7 @@ fun LineChart(
     }
     var selected by remember(data) { mutableStateOf<Int?>(null) }
     val hitTester = remember { ChartHitTester() }
+    val haptic = LocalHapticFeedback.current
 
     val description = remember(data, goal) {
         if (data.isEmpty()) {
@@ -134,7 +138,11 @@ fun LineChart(
                     onDragStart = { offset -> selected = hitTester.nearest(offset.x) },
                     onHorizontalDrag = { change, _ ->
                         change.consume()
-                        selected = hitTester.nearest(change.position.x)
+                        val index = hitTester.nearest(change.position.x)
+                        if (index != selected) {
+                            selected = index
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
                     },
                 )
             }
@@ -223,13 +231,14 @@ fun LineChart(
                 }
 
                 // ---- goal ----
-                val goalLayout = goal?.let {
+                // goal value + its label ("Ziel 75,0 kg", with an arrow if it lies outside the domain)
+                val goalMarker: Pair<Double, TextLayoutResult>? = goal?.let {
                     val arrow = when {
                         axisInfo.goalInside -> ""
                         it < axis.min -> " ↓"
                         else -> " ↑"
                     }
-                    textMeasurer.measure("$goalLabel ${valueFormatter(it)}$arrow", goalStyle)
+                    it to textMeasurer.measure("$goalLabel ${valueFormatter(it)}$arrow", goalStyle)
                 }
                 val goalY = if (goal != null && axisInfo.goalInside) yOf(goal) else null
                 val emptyLayout = if (n == 0) textMeasurer.measure(emptyText, emptyStyle) else null
@@ -250,16 +259,21 @@ fun LineChart(
                         drawText(layout, topLeft = Offset(left, size.height - layout.size.height))
                     }
                     // goal line or edge marker
-                    if (goalLayout != null && goal != null) {
+                    if (goalMarker != null) {
+                        val (goalAt, goalLayout) = goalMarker
                         val labelGap = 2.dp.toPx()
-                        val labelLeft = plotRight - goalLayout.size.width
+                        val labelLeft = plotRight - goalLayout.size.width - 4.dp.toPx()
                         if (goalY != null) {
                             drawDashedGoalLine(goalColor.copy(alpha = 0.9f), goalY, plotLeft, plotRight)
                             val above = goalY - goalLayout.size.height - labelGap
-                            drawText(goalLayout, topLeft = Offset(labelLeft, if (above >= 0f) above else goalY + labelGap))
+                            drawLabelWithBackdrop(
+                                layout = goalLayout,
+                                topLeft = Offset(labelLeft, if (above >= 0f) above else goalY + labelGap),
+                                backdrop = labelBackdrop,
+                            )
                         } else {
-                            val labelTop = if (goal < axis.min) bottom - goalLayout.size.height - labelGap else 0f
-                            drawText(goalLayout, topLeft = Offset(labelLeft, labelTop))
+                            val labelTop = if (goalAt < axis.min) bottom - goalLayout.size.height - labelGap else labelGap
+                            drawLabelWithBackdrop(goalLayout, Offset(labelLeft, labelTop), labelBackdrop)
                         }
                     }
                     if (emptyLayout != null) {

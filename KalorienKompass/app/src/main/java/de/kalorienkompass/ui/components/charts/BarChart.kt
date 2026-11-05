@@ -23,7 +23,9 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
@@ -82,6 +84,7 @@ fun BarChart(
     val tooltipValueStyle = typography.labelLarge.copy(color = colors.inverseOnSurface, fontWeight = FontWeight.Bold)
     val gridColor = colors.outline.copy(alpha = 0.55f)
     val trackColor = colors.onSurface.copy(alpha = 0.05f)
+    val labelBackdrop = colors.surface.copy(alpha = 0.85f)
     val tooltipBackground = colors.inverseSurface
 
     val progress = remember { Animatable(0f) }
@@ -91,6 +94,7 @@ fun BarChart(
     }
     var selected by remember(data) { mutableStateOf<Int?>(null) }
     val hitTester = remember { ChartHitTester() }
+    val haptic = LocalHapticFeedback.current
 
     val description = remember(data, goal) {
         if (!hasValues) {
@@ -123,7 +127,11 @@ fun BarChart(
                     onDragStart = { offset -> selected = hitTester.nearest(offset.x) },
                     onHorizontalDrag = { change, _ ->
                         change.consume()
-                        selected = hitTester.nearest(change.position.x)
+                        val index = hitTester.nearest(change.position.x)
+                        if (index != selected) {
+                            selected = index
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
                     },
                 )
             }
@@ -159,7 +167,8 @@ fun BarChart(
                     val text = labelFormatter?.invoke(data[i].date) ?: defaultBarLabel(data[i].date, spacing, n)
                     val layout = textMeasurer.measure(text, axisStyle)
                     val w = layout.size.width.toFloat()
-                    val left = (centers[i] - w / 2f).coerceIn(0f, max(0f, size.width - w))
+                    val maxLeft = max(0f, size.width - w)
+                    val left = (centers[i] - w / 2f).coerceIn(min(plotLeft, maxLeft), maxLeft)
                     if (left + w + minGap <= nextLeftLimit) {
                         xLabels += layout to left
                         nextLeftLimit = left
@@ -236,9 +245,13 @@ fun BarChart(
                         drawDashedGoalLine(goalColor.copy(alpha = 0.9f), goalY, plotLeft, plotRight)
                         val labelGap = 2.dp.toPx()
                         val above = goalY - goalLayout.size.height - labelGap
-                        drawText(
-                            goalLayout,
-                            topLeft = Offset(plotRight - goalLayout.size.width, if (above >= 0f) above else goalY + labelGap),
+                        drawLabelWithBackdrop(
+                            layout = goalLayout,
+                            topLeft = Offset(
+                                plotRight - goalLayout.size.width - 4.dp.toPx(),
+                                if (above >= 0f) above else goalY + labelGap,
+                            ),
+                            backdrop = labelBackdrop,
                         )
                     }
 

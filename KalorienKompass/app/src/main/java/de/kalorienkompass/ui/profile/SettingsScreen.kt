@@ -171,47 +171,47 @@ fun SettingsScreen(navController: NavController) {
                     .fillMaxSize()
                     .padding(padding),
             )
-            return@Scaffold
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            AppearanceSection(selected = state.settings.themeMode, onSelect = vm::setTheme)
-            BudgetSection(checked = state.settings.addBurnedCalories, onChange = vm::setAddBurnedCalories)
-            AiSection(
-                state = state,
-                keyInput = vm.keyInput,
-                keyTest = vm.keyTest,
-                onKeyInputChange = vm::onKeyInputChange,
-                onSave = vm::saveKey,
-                onTest = vm::testKey,
-                onRemove = vm::removeKey,
-                onModel = vm::setModel,
-                onOpenConsole = { openUrl(ANTHROPIC_CONSOLE_URL) },
-            )
-            DataSection(
-                busy = vm.busyAction,
-                onExportBackup = { launchSafely { exportBackupLauncher.launch(BackupManager.backupFileName()) } },
-                onImportBackup = { launchSafely { importBackupLauncher.launch(BackupManager.IMPORT_MIME_TYPES) } },
-                onDiaryCsv = { launchSafely { diaryCsvLauncher.launch(BackupManager.diaryCsvFileName()) } },
-                onMeasurementsCsv = {
-                    launchSafely { measurementsCsvLauncher.launch(BackupManager.measurementsCsvFileName()) }
-                },
-                onActivityCsv = { launchSafely { activityCsvLauncher.launch(BackupManager.activityCsvFileName()) } },
-            )
-            AboutSection(
-                onOpenFoodFacts = { openUrl(OPEN_FOOD_FACTS_URL) },
-                onAnthropic = { openUrl(ANTHROPIC_URL) },
-                onPrivacy = { navController.navigate(Routes.PRIVACY) { launchSingleTop = true } },
-            )
-            Spacer(Modifier.height(8.dp))
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                AppearanceSection(selected = state.settings.themeMode, onSelect = vm::setTheme)
+                BudgetSection(checked = state.settings.addBurnedCalories, onChange = vm::setAddBurnedCalories)
+                AiSection(
+                    state = state,
+                    keyInput = vm.keyInput,
+                    keyTest = vm.keyTest,
+                    onKeyInputChange = vm::onKeyInputChange,
+                    onSave = vm::saveKey,
+                    onTest = vm::testKey,
+                    onRemove = vm::removeKey,
+                    onModel = vm::setModel,
+                    onOpenConsole = { openUrl(ANTHROPIC_CONSOLE_URL) },
+                )
+                DataSection(
+                    busy = vm.busyAction,
+                    onExportBackup = { launchSafely { exportBackupLauncher.launch(BackupManager.backupFileName()) } },
+                    onImportBackup = { launchSafely { importBackupLauncher.launch(BackupManager.IMPORT_MIME_TYPES) } },
+                    onDiaryCsv = { launchSafely { diaryCsvLauncher.launch(BackupManager.diaryCsvFileName()) } },
+                    onMeasurementsCsv = {
+                        launchSafely { measurementsCsvLauncher.launch(BackupManager.measurementsCsvFileName()) }
+                    },
+                    onActivityCsv = { launchSafely { activityCsvLauncher.launch(BackupManager.activityCsvFileName()) } },
+                )
+                AboutSection(
+                    onOpenFoodFacts = { openUrl(OPEN_FOOD_FACTS_URL) },
+                    onAnthropic = { openUrl(ANTHROPIC_URL) },
+                    onPrivacy = { navController.navigate(Routes.PRIVACY) { launchSingleTop = true } },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 

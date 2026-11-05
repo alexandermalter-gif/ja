@@ -205,7 +205,7 @@ private fun HeaderCard(state: ProfileUiState, onEdit: () -> Unit) {
             StatTile(
                 label = "BMI",
                 value = if (bmi > 0.0) formatDecimal(bmi) else "–",
-                valueColor = bmiColor(bmi),
+                accent = if (bmi > 0.0) bmiColor(bmi) else null,
                 modifier = Modifier.weight(1f),
             )
             StatTile(
@@ -219,12 +219,20 @@ private fun HeaderCard(state: ProfileUiState, onEdit: () -> Unit) {
             Spacer(Modifier.height(14.dp))
             BmiScale(bmi = bmi)
             Spacer(Modifier.height(6.dp))
-            Text(
-                text = "BMI ${formatDecimal(bmi)}: ${GoalCalculator.bmiCategory(bmi)}",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = bmiColor(bmi),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(bmiColor(bmi)),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "BMI ${formatDecimal(bmi)}: ${GoalCalculator.bmiCategory(bmi)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
         if (!state.hasWeightEntry) {
             Spacer(Modifier.height(6.dp))

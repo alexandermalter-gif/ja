@@ -383,8 +383,11 @@ private fun StatusCard(
                 Spacer(Modifier.height(12.dp))
                 InfoLine(
                     icon = Icons.Filled.Info,
-                    text = "Health Connect wird auf diesem Gerät nicht unterstützt (benötigt Android 9 oder neuer). " +
-                        "Nutze den Schrittsensor weiter unten oder trage deine Schritte im Tagebuch selbst ein.",
+                    text = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                        "Health Connect benötigt Android 9 oder neuer."
+                    } else {
+                        "Health Connect ist auf diesem Gerät nicht verfügbar."
+                    } + " Nutze den Schrittsensor weiter unten oder trage deine Schritte im Tagebuch selbst ein.",
                 )
                 if (enabled) {
                     SwitchRow(
@@ -683,6 +686,15 @@ private fun StepSensorCard(
                 text = "Dein Gerät hat keinen Schrittzähler-Sensor.",
                 color = MaterialTheme.colorScheme.secondary,
             )
+            if (enabled) {
+                // e.g. restored from a backup of another phone: allow switching it off
+                SwitchRow(
+                    title = "Schrittsensor verwenden",
+                    subtitle = "Derzeit nicht verfügbar",
+                    checked = true,
+                    onCheckedChange = onToggle,
+                )
+            }
             return@AppCard
         }
         Spacer(Modifier.height(8.dp))

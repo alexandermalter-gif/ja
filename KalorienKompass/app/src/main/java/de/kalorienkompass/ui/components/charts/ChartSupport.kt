@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -66,6 +67,12 @@ private fun stepCandidates(span: Double, intervals: Int): List<Double> {
     return (exp - 1..exp + 2).flatMap { e -> NICE_FACTORS.map { f -> f * 10.0.pow(e) } }.sorted()
 }
 
+/** Rounds away floating point noise (0.2 × 8 = 1.6000000000000001). */
+private fun roundTo(value: Double, decimals: Int): Double {
+    val factor = 10.0.pow(decimals.coerceIn(0, 6))
+    return Math.round(value * factor) / factor
+}
+
 /** Number of decimals needed to print multiples of [step] exactly (0–3). */
 internal fun decimalsForStep(step: Double): Int {
     for (d in 0..3) {
@@ -97,7 +104,13 @@ internal fun niceAxis(lo: Double, hi: Double, maxIntervals: Int = 4): ValueAxis 
         val end = ceil(b / step - EPS) * step
         val intervals = ((end - start) / step).roundToInt()
         if (intervals in 1..maxIntervals) {
-            return ValueAxis(start, end, List(intervals + 1) { start + it * step }, decimalsForStep(step))
+            val decimals = decimalsForStep(step)
+            return ValueAxis(
+                min = roundTo(start, decimals),
+                max = roundTo(end, decimals),
+                ticks = List(intervals + 1) { roundTo(start + it * step, decimals) },
+                decimals = decimals,
+            )
         }
     }
     return ValueAxis(a, b, listOf(a, b), 1)
@@ -123,7 +136,8 @@ internal fun ticksWithin(lo: Double, hi: Double, maxTicks: Int = 4): ValueAxis {
         val first = ceil(a / step - EPS) * step
         val count = floor((b - first) / step + EPS).toInt() + 1
         if (count in 2..maxTicks) {
-            return ValueAxis(a, b, List(count) { first + it * step }, decimalsForStep(step))
+            val decimals = decimalsForStep(step)
+            return ValueAxis(a, b, List(count) { roundTo(first + it * step, decimals) }, decimals)
         }
     }
     return ValueAxis(a, b, listOf(a, b), 1)
@@ -259,6 +273,19 @@ internal fun smoothLinePath(xs: FloatArray, ys: FloatArray): Path {
         path.cubicTo(cx, ys[i - 1], cx, ys[i], xs[i], ys[i])
     }
     return path
+}
+
+/** Text with a small rounded backdrop so it stays legible on top of bars and lines. */
+internal fun DrawScope.drawLabelWithBackdrop(layout: TextLayoutResult, topLeft: Offset, backdrop: Color) {
+    val padH = 4.dp.toPx()
+    val padV = 1.dp.toPx()
+    drawRoundRect(
+        color = backdrop,
+        topLeft = Offset(topLeft.x - padH, topLeft.y - padV),
+        size = Size(layout.size.width + 2 * padH, layout.size.height + 2 * padV),
+        cornerRadius = CornerRadius(4.dp.toPx()),
+    )
+    drawText(layout, topLeft = topLeft)
 }
 
 /** Dashed horizontal goal line from [startX] to [endX]. */

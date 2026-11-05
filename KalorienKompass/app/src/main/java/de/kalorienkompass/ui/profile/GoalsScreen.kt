@@ -275,6 +275,7 @@ private fun PersonalSection(
                     selected = draft.sex == sex,
                     onClick = { onChange { it.copy(sex = sex) } },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = Sex.entries.size),
+                    colors = profileSegmentedColors(),
                     icon = {
                         Icon(sex.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
                     },
@@ -396,6 +397,7 @@ private fun GoalSection(
                     selected = draft.goalType == goal,
                     onClick = { onChange { it.copy(goalType = goal) } },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = GoalType.entries.size),
+                    colors = profileSegmentedColors(),
                     icon = {},
                     label = {
                         Text(

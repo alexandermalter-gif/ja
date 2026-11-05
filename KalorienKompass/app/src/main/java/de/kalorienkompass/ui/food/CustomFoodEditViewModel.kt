@@ -162,7 +162,13 @@ class CustomFoodEditViewModel internal constructor(
 
     /** Name typed in the search before "Eigenes Lebensmittel anlegen" (new foods only). */
     internal fun applySearchName(name: String) {
-        if (foodId == null && state.form.name.isBlank()) update { it.copy(name = name.take(120)) }
+        if (foodId != null || state.form.name.isNotBlank()) return
+        val pristine = !state.isDirty
+        update { it.copy(name = name.take(120)) }
+        if (pristine) {
+            state = state.copy(initialForm = state.form)
+            persistInitial(state.form)
+        }
     }
 
     /**

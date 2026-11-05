@@ -393,11 +393,11 @@ private fun ReviewItemCard(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 6.dp),
             )
-        } else if (item.usesAiEstimate && item.ai.grams > 0.0 && item.ai.kcalPer100g <= 0.0) {
+        } else if (item.usesAiEstimate && item.ai.kcalPer100g <= 0.0) {
             Text(
-                text = "Die KI hat keine Nährwerte geliefert – bitte ein Lebensmittel zuordnen.",
+                text = "Die KI schätzt 0 kcal – stimmt das? Sonst bitte unten ein Lebensmittel zuordnen.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 6.dp),
             )
         }

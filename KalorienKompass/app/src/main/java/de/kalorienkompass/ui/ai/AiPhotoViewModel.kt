@@ -245,7 +245,7 @@ class AiPhotoViewModel(
     /** Open Food Facts search (results are not stored yet). Throws IOException on network problems. */
     suspend fun searchRemote(query: String): List<FoodEntity> {
         val q = query.trim()
-        return if (q.length < 2) emptyList() else foodRepository.searchRemote(q)
+        return if (q.length < 2) emptyList() else withContext(Dispatchers.IO) { foodRepository.searchRemote(q) }
     }
 
     /** Adds every item with a valid amount to the diary (one transaction). */

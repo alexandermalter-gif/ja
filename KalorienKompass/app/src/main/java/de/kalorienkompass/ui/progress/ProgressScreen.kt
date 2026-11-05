@@ -84,7 +84,6 @@ import kotlin.math.roundToLong
 private data class AddMeasurementRequest(val type: MeasurementType, val typeSelectable: Boolean)
 
 /** Tab "Fortschritt": period selector, weight / calories / macros / steps cards and body measurements. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(navController: NavController) {
     val viewModel: ProgressViewModel = viewModel(
@@ -98,6 +97,12 @@ fun ProgressScreen(navController: NavController) {
             )
         },
     )
+    ProgressScreen(navController = navController, viewModel = viewModel)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ProgressScreen(navController: NavController, viewModel: ProgressViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val range by viewModel.range.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -174,7 +179,7 @@ fun ProgressScreen(navController: NavController) {
 }
 
 @Composable
-private fun ProgressList(
+internal fun ProgressList(
     content: ProgressContent,
     onAddMeasurement: (MeasurementType, Boolean) -> Unit,
     onOpenHistory: (MeasurementType) -> Unit,

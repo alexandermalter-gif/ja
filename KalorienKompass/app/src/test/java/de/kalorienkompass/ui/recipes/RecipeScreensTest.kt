@@ -194,7 +194,11 @@ class RecipeScreensTest {
         compose.onNodeWithText("Rezept speichern").performScrollTo().performClick()
 
         // A new recipe opens its detail page (replacing the editor).
+        compose.mainClock.advanceTimeBy(300)
+        println("DEBUGSNACK " + compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes().mapNotNull { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString() }.filter { it.contains("Rezept") || it.contains("gespeichert") || it.contains("Zutat") }.joinToString(" | "))
+        println("DEBUGDB " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name + "/" + it.ingredients.size })
         try { waitForText("pro Portion") } catch (e: Throwable) {
+            println("DEBUGDB2 " + runBlocking { deps.recipes.observeAll().first() }.map { it.recipe.name + "/" + it.ingredients.size })
             println("DEBUGTREE route=" + currentRoute())
             println(compose.onRoot(useUnmergedTree = false).printToString(maxDepth = 100))
             throw e

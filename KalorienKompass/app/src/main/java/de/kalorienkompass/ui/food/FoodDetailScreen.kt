@@ -236,7 +236,6 @@ fun FoodDetailScreen(navController: NavController, foodId: Long, date: LocalDate
                 onUnitSelected = { vm.onUnitSelected(it, grams) },
                 onMealSelected = vm::onMealSelected,
                 onDateSelected = vm::onDateSelected,
-                onDone = onPrimaryAction,
                 modifier = contentModifier,
             )
         }
@@ -271,7 +270,6 @@ private fun FoodDetailContent(
     onUnitSelected: (AmountUnitOption) -> Unit,
     onMealSelected: (MealType) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
-    onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
@@ -292,9 +290,8 @@ private fun FoodDetailContent(
                 DecimalTextField(
                     value = amountText,
                     onValueChange = onAmountChange,
-                    label = "Anzahl",
+                    label = if (option == null || option.isBase) "Menge" else "Anzahl",
                     imeAction = ImeAction.Done,
-                    onImeAction = { if (grams != null) onDone() },
                     modifier = Modifier.weight(0.8f),
                 )
                 Spacer(Modifier.width(10.dp))

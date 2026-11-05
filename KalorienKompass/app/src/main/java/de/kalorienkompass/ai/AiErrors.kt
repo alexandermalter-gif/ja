@@ -34,6 +34,8 @@ object AiErrors {
         "Keine Verbindung zum KI-Dienst. Bitte prüfe deine Internetverbindung und versuche es erneut."
     private const val TIMEOUT_MESSAGE =
         "Die KI hat zu lange für die Antwort gebraucht. Bitte versuche es erneut."
+    private const val OVERLOADED_MESSAGE =
+        "Die KI ist gerade überlastet. Bitte versuche es in ein paar Minuten erneut."
     private const val BILLING_MESSAGE =
         "Dein Guthaben bei Anthropic reicht nicht aus. Bitte lade es auf console.anthropic.com unter „Billing“ auf."
 
@@ -77,15 +79,17 @@ object AiErrors {
                 e, AiErrorKind.BAD_IMAGE,
             )
             is BadRequestException -> badRequest(e)
-            is OverloadedException -> AiException(
-                "Die KI ist gerade überlastet. Bitte versuche es in ein paar Minuten erneut.",
-                e, AiErrorKind.OVERLOADED,
-            )
+            is OverloadedException -> AiException(OVERLOADED_MESSAGE, e, AiErrorKind.OVERLOADED)
             is GatewayTimeoutException, is RequestTimeoutException -> AiException(TIMEOUT_MESSAGE, e, AiErrorKind.TIMEOUT)
-            is InternalServerException -> AiException(
-                "Beim KI-Dienst ist ein Fehler aufgetreten (${e.statusCode()}). Bitte versuche es später erneut.",
-                e, AiErrorKind.SERVER,
-            )
+            is InternalServerException ->
+                if (e.statusCode() == 529 || e.type().orElse(null) == ErrorType.OVERLOADED_ERROR) {
+                    AiException(OVERLOADED_MESSAGE, e, AiErrorKind.OVERLOADED)
+                } else {
+                    AiException(
+                        "Beim KI-Dienst ist ein Fehler aufgetreten (${e.statusCode()}). Bitte versuche es später erneut.",
+                        e, AiErrorKind.SERVER,
+                    )
+                }
             is AnthropicServiceException -> otherServiceError(e)
             is AnthropicInvalidDataException -> AiException(
                 "Die Antwort der KI konnte nicht gelesen werden. Bitte versuche es erneut.",
@@ -118,13 +122,10 @@ object AiErrors {
 
     private fun otherServiceError(e: AnthropicServiceException): AiException {
         val apiMessage = e.apiMessage().orElse(null)?.trim().orEmpty()
-        val type = e.errorType().orElse(null)
+        val type = e.type().orElse(null)
         return when {
             isBillingProblem(e, apiMessage) -> AiException(BILLING_MESSAGE, e, AiErrorKind.BILLING)
-            type == ErrorType.OVERLOADED_ERROR -> AiException(
-                "Die KI ist gerade überlastet. Bitte versuche es in ein paar Minuten erneut.",
-                e, AiErrorKind.OVERLOADED,
-            )
+            type == ErrorType.OVERLOADED_ERROR -> AiException(OVERLOADED_MESSAGE, e, AiErrorKind.OVERLOADED)
             type == ErrorType.RATE_LIMIT_ERROR -> AiException(
                 "Zu viele Anfragen in kurzer Zeit. Bitte warte einen Moment und versuche es dann erneut.",
                 e, AiErrorKind.RATE_LIMIT,
@@ -139,7 +140,7 @@ object AiErrors {
     /** "Your credit balance is too low …" arrives as HTTP 400 (invalid_request_error) or 402 (billing_error). */
     private fun isBillingProblem(e: AnthropicServiceException, apiMessage: String): Boolean =
         e.statusCode() == 402 ||
-            e.errorType().orElse(null) == ErrorType.BILLING_ERROR ||
+            e.type().orElse(null) == ErrorType.BILLING_ERROR ||
             apiMessage.contains("credit balance", ignoreCase = true)
 
     private fun isTimeout(t: Throwable): Boolean {

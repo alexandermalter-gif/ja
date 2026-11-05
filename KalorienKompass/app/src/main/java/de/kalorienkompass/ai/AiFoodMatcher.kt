@@ -61,13 +61,14 @@ class AiFoodMatcher internal constructor(
  * aliases/qualifiers ("Nudeln (Spaghetti, Penne), gekocht").
  *
  * score = (0.6 · coverage of the query + 0.4 · coverage of the food name)
- *         × penalty if the food's head word is missing × calorie plausibility × source preference
+ *         × penalty per missing head word × calorie plausibility × source preference
  */
 object FoodMatchScoring {
 
     const val DESCRIPTOR_WEIGHT: Double = 0.5
     private const val MIN_SCORE = 0.15
     private const val MISSING_HEAD_PENALTY = 0.6
+    private const val HEAD_SIMILARITY = 0.6
     private const val OPEN_FOOD_FACTS_FACTOR = 0.95
 
     private val STOPWORDS = setOf(
@@ -100,7 +101,10 @@ object FoodMatchScoring {
 
     data class Token(val text: String, val weight: Double, val inParens: Boolean)
 
-    /** Tokens of [text] (stopwords and pure numbers removed, duplicates dropped). */
+    /**
+     * Tokens of [text] (stopwords and pure numbers removed, duplicates dropped). Hyphenated
+     * compounds are joined like German compounds: "Curry-Ketchup" → "curryketchup" (a ketchup).
+     */
     fun tokens(text: String): List<Token> {
         val result = ArrayList<Token>()
         val seen = HashSet<String>()
@@ -113,7 +117,8 @@ object FoodMatchScoring {
             if (word.length < 2 || word in STOPWORDS || word.all { it.isDigit() } || !seen.add(word)) return
             result += Token(word, if (isDescriptor(word)) DESCRIPTOR_WEIGHT else 1.0, depth > 0)
         }
-        for (c in normalize(text)) {
+        val normalized = normalize(text)
+        for ((index, c) in normalized.withIndex()) {
             when {
                 c == '(' || c == '[' -> {
                     flush()
@@ -124,6 +129,7 @@ object FoodMatchScoring {
                     depth = max(0, depth - 1)
                 }
                 c.isLetterOrDigit() -> current.append(c)
+                c == '-' && current.isNotEmpty() && normalized.getOrNull(index + 1)?.isLetter() == true -> Unit
                 else -> flush()
             }
         }
@@ -197,10 +203,15 @@ object FoodMatchScoring {
 
         var result = 0.6 * recall + 0.4 * precision
 
-        // 3) the head word of the food ("Hering" in "Hering in Tomatensauce") should be in the query
+        // 3) head words: the food's ("Hering" in "Hering in Tomatensauce") must appear in the query and
+        //    the query's ("Gemüsecurry" in "Gemüsecurry mit Kichererbsen") in the food name
         val head = mainTokens[headIndex]
-        val headMatched = aliasMatched || bestSimilarity(head.text, queryTokens) >= 0.6
-        if (!headMatched && head.weight >= 1.0) result *= MISSING_HEAD_PENALTY
+        val foodHeadMatched = aliasMatched || bestSimilarity(head.text, queryTokens) >= HEAD_SIMILARITY
+        if (!foodHeadMatched && head.weight >= 1.0) result *= MISSING_HEAD_PENALTY
+        val queryHead = queryTokens.firstOrNull { it.weight >= 1.0 }
+        if (queryHead != null && bestSimilarity(queryHead.text, foodTokens) < HEAD_SIMILARITY) {
+            result *= MISSING_HEAD_PENALTY
+        }
 
         // 4) calorie plausibility ("Reis" ≈ 130 kcal fits "Reis, gekocht" better than "Reis, roh")
         result *= kcalFactor(aiKcalPer100g, food.kcal)
@@ -211,12 +222,12 @@ object FoodMatchScoring {
         return result.coerceIn(0.0, 1.0)
     }
 
-    /** 0.75 (very different calories) … 1.0 (same calories); 1.0 if the AI gave no value. */
+    /** 0.6 (very different calories) … 1.0 (same calories); 1.0 if the AI gave no value. */
     fun kcalFactor(aiKcalPer100g: Double?, foodKcalPer100g: Double): Double {
         if (aiKcalPer100g == null || aiKcalPer100g.isNaN() || foodKcalPer100g.isNaN()) return 1.0
         val reference = max(max(aiKcalPer100g, foodKcalPer100g), 20.0)
         val similarity = (1.0 - abs(aiKcalPer100g - foodKcalPer100g) / reference).coerceIn(0.0, 1.0)
-        return 0.75 + 0.25 * similarity
+        return 0.6 + 0.4 * similarity
     }
 
     /** Ranks [foods] for [item] (best first); AI foods and near-zero scores are dropped. */
@@ -240,10 +251,11 @@ object FoodMatchScoring {
 
     /** Search strings for the database: search term, name, then single words (first and last food word). */
     fun searchQueries(item: AiFoodItem): List<String> {
-        val result = LinkedHashSet<String>()
+        val result = ArrayList<String>()
+        val seen = HashSet<String>()
         fun add(query: String?) {
             val q = query?.trim().orEmpty()
-            if (q.length >= 2) result += q
+            if (q.length >= 2 && seen.add(q.lowercase(Locale.GERMAN))) result += q
         }
         add(item.searchTerm)
         add(item.name)

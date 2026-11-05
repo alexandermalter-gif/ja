@@ -187,17 +187,16 @@ class FoodPhotoAnalyzer internal constructor(
         call: AiCallSettings,
         allowFallbacks: Boolean,
         build: (withFallbacks: Boolean) -> MessageCreateParams,
-    ): Message {
+    ): Message = withContext(Dispatchers.IO) {
+        // IO context: building the client and serializing the (large) request body never touch the main thread
         val apiKey = call.apiKey ?: throw AiErrors.missingKey()
         val client = try {
-            withContext(Dispatchers.IO) { clients.clientFor(apiKey) }
-        } catch (e: CancellationException) {
-            throw e
+            clients.clientFor(apiKey)
         } catch (e: Exception) {
             throw AiException("Die Verbindung zur KI konnte nicht vorbereitet werden: ${e.message ?: e.javaClass.simpleName}", e)
         }
         val withFallbacks = allowFallbacks && !fallbacksRejected && FoodPhotoRequests.supportsFallbacks(call.model)
-        return try {
+        try {
             execute(client, build(withFallbacks))
         } catch (e: AiException) {
             throw e

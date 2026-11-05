@@ -3,7 +3,9 @@ package de.kalorienkompass.ui.profile
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -15,9 +17,12 @@ import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Hiking
 import androidx.compose.material.icons.filled.Male
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonColors
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -119,7 +124,8 @@ internal object ProfileRules {
         }
     }
 
-    fun rateLabel(rate: Double): String = "${formatGrams(rate)} kg"
+    /** "0,25", "0,5", "0,75", "1,0" */
+    fun rateLabel(rate: Double): String = if (rate == 1.0) "1,0" else formatGrams(rate)
 
     /** Rough date when the target weight is reached, e.g. "ca. März 2027 (in 15 Wochen)". null if not applicable. */
     fun estimatedArrival(goal: GoalType, currentKg: Double?, targetKg: Double?, rate: Double, today: LocalDate = LocalDate.now()): String? {
@@ -215,7 +221,8 @@ internal fun GoalTypeChoice(selected: GoalType?, onSelect: (GoalType) -> Unit, m
     }
 }
 
-/** Chips 0,25 / 0,5 / 0,75 / 1 kg per week with the resulting daily energy change. */
+/** Segments 0,25 / 0,5 / 0,75 / 1,0 kg per week with the resulting daily energy change. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WeeklyRateChoice(
     goal: GoalType,
@@ -225,32 +232,30 @@ internal fun WeeklyRateChoice(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = if (goal == GoalType.GAIN) "Tempo (Zunahme pro Woche)" else "Tempo (Abnahme pro Woche)",
+            text = if (goal == GoalType.GAIN) "Tempo: Zunahme in kg pro Woche" else "Tempo: Abnahme in kg pro Woche",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ProfileRules.WEEKLY_RATES.forEach { value ->
-                FilterChip(
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            ProfileRules.WEEKLY_RATES.forEachIndexed { index, value ->
+                SegmentedButton(
                     selected = rate == value,
                     onClick = { onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = ProfileRules.WEEKLY_RATES.size),
+                    colors = profileSegmentedColors(),
+                    icon = {},
                     label = {
                         Text(
                             text = ProfileRules.rateLabel(value),
                             fontWeight = if (rate == value) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
                         )
                     },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                    modifier = Modifier.weight(1f),
                 )
             }
         }
+        Spacer(Modifier.height(6.dp))
         Text(
             text = buildString {
                 append(ProfileRules.rateDescription(goal, rate))
@@ -262,3 +267,15 @@ internal fun WeeklyRateChoice(
         )
     }
 }
+
+/** Mint segmented buttons (the default secondary container would be amber in this theme). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun profileSegmentedColors(): SegmentedButtonColors = SegmentedButtonDefaults.colors(
+    activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+    activeContentColor = MaterialTheme.colorScheme.primary,
+    activeBorderColor = MaterialTheme.colorScheme.primary,
+    inactiveContainerColor = Color.Transparent,
+    inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+    inactiveBorderColor = MaterialTheme.colorScheme.outline,
+)

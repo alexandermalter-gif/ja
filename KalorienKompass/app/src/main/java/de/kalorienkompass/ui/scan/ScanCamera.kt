@@ -4,6 +4,7 @@ import android.util.Log
 import android.util.Size
 import android.view.ViewGroup
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
 import androidx.camera.core.FocusMeteringAction
@@ -14,6 +15,7 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -22,17 +24,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.launch
+import java.lang.reflect.Method
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * UI-facing state of the scanner camera: torch, preview stream and errors.
@@ -67,11 +72,7 @@ internal class ScanCameraState {
     fun toggleTorch() {
         val cam = camera ?: return
         if (!hasTorch) return
-        try {
-            cam.cameraControl.enableTorch(!torchOn)
-        } catch (e: Exception) {
-            Log.w(TAG, "Torch could not be switched", e)
-        }
+        CameraControlCompat.enableTorch(cam.cameraControl, !torchOn)
     }
 
     /** Tap to focus: [point] in preview (= overlay) pixel coordinates. */
@@ -86,7 +87,7 @@ internal class ScanCameraState {
             )
                 .setAutoCancelDuration(3, TimeUnit.SECONDS)
                 .build()
-            cam.cameraControl.startFocusAndMetering(action)
+            CameraControlCompat.startFocusAndMetering(cam.cameraControl, action)
         } catch (e: Exception) {
             Log.w(TAG, "Tap to focus failed", e)
         }
@@ -178,6 +179,9 @@ internal fun ScanCameraPreview(
         onDispose { analysisExecutor.shutdown() }
     }
 
+    // Main-thread scope (composition dispatcher) for obtaining the camera provider.
+    val scope = rememberCoroutineScope()
+
     DisposableEffect(lifecycleOwner, analyzer, state.bindRequest) {
         var disposed = false
         var cameraProvider: ProcessCameraProvider? = null
@@ -205,42 +209,38 @@ internal fun ScanCameraPreview(
             )
             .build()
 
-        try {
-            val providerFuture = ProcessCameraProvider.getInstance(context)
-            providerFuture.addListener(
-                {
-                    if (disposed) return@addListener
-                    try {
-                        val provider = providerFuture.get()
-                        cameraProvider = provider
-                        val selector = when {
-                            provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
-                            provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
-                            else -> null
-                        }
-                        if (selector == null) {
-                            state.error = "Auf diesem Gerät wurde keine nutzbare Kamera gefunden."
-                            return@addListener
-                        }
-                        preview.setSurfaceProvider(previewView.surfaceProvider)
-                        analysis.setAnalyzer(analysisExecutor, analyzer)
-                        provider.unbindAll()
-                        val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
-                        state.attach(camera, previewView, lifecycleOwner)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Binding the camera failed", e)
-                        state.error = "Die Kamera konnte nicht gestartet werden."
-                    }
-                },
-                ContextCompat.getMainExecutor(context),
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "CameraX is not available", e)
-            state.error = "Die Kamera konnte nicht gestartet werden."
+        // ProcessCameraProvider.awaitInstance = getInstance(context) + await (camera-lifecycle 1.4).
+        // The plain ListenableFuture API cannot be used here: Guava is only a runtime dependency.
+        val bindJob = scope.launch {
+            try {
+                val provider = ProcessCameraProvider.awaitInstance(context)
+                if (disposed) return@launch
+                cameraProvider = provider
+                val selector = when {
+                    provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    else -> null
+                }
+                if (selector == null) {
+                    state.error = "Auf diesem Gerät wurde keine nutzbare Kamera gefunden."
+                    return@launch
+                }
+                preview.setSurfaceProvider(previewView.surfaceProvider)
+                analysis.setAnalyzer(analysisExecutor, analyzer)
+                provider.unbindAll()
+                val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                state.attach(camera, previewView, lifecycleOwner)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Binding the camera failed", e)
+                state.error = "Die Kamera konnte nicht gestartet werden."
+            }
         }
 
         onDispose {
             disposed = true
+            bindJob.cancel()
             analysis.clearAnalyzer()
             state.detach()
             try {
@@ -263,3 +263,41 @@ internal fun ScanCameraPreview(
 }
 
 private const val TAG = "ScanCameraPreview"
+
+/**
+ * [CameraControl.enableTorch] and [CameraControl.startFocusAndMetering] return Guava's
+ * `ListenableFuture`, which is not on this module's compile classpath (Guava only arrives as a
+ * runtime dependency of Health Connect). Both are therefore invoked reflectively through the public
+ * interface methods; their result futures are not needed.
+ */
+private object CameraControlCompat {
+
+    private val enableTorchMethod: Method? by lazy {
+        runCatching { CameraControl::class.java.getMethod("enableTorch", Boolean::class.javaPrimitiveType) }
+            .onFailure { Log.w(TAG, "CameraControl.enableTorch not found", it) }
+            .getOrNull()
+    }
+
+    private val focusMethod: Method? by lazy {
+        runCatching { CameraControl::class.java.getMethod("startFocusAndMetering", FocusMeteringAction::class.java) }
+            .onFailure { Log.w(TAG, "CameraControl.startFocusAndMetering not found", it) }
+            .getOrNull()
+    }
+
+    fun enableTorch(control: CameraControl, enabled: Boolean) {
+        invoke(enableTorchMethod, control, enabled)
+    }
+
+    fun startFocusAndMetering(control: CameraControl, action: FocusMeteringAction) {
+        invoke(focusMethod, control, action)
+    }
+
+    private fun invoke(method: Method?, control: CameraControl, argument: Any) {
+        if (method == null) return
+        try {
+            method.invoke(control, argument)
+        } catch (e: Exception) {
+            Log.w(TAG, "CameraControl call ${method.name} failed", e)
+        }
+    }
+}
