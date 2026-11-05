@@ -14,11 +14,17 @@ function audio() {
       if (!AC) return null;
       ctx = new AC();
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    // iOS meldet nach Anrufen u. ä. auch 'interrupted'
+    if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
     return ctx;
   } catch {
     return null;
   }
+}
+
+/** Tab versteckt: Audio-Hardware freigeben (spart Akku). */
+export function suspendAudio() {
+  if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
 }
 
 function tone({ f1, f2 = f1, dur = 0.12, type = 'sine', gain = 0.12, delay = 0 }) {
@@ -77,11 +83,16 @@ export const sfx = {
     tone({ f1: b, f2: b * 1.55, dur: 0.12, type: 'sine', gain: 0.1 });
     tone({ f1: b * 1.55, f2: b * 1.1, dur: 0.16, type: 'sine', gain: 0.08, delay: 0.11 });
   },
-  /** Aufprall der Katze */
-  land: () => {
-    tone({ f1: 180, f2: 60, dur: 0.16, type: 'sine', gain: 0.16 });
-    noise({ dur: 0.09, gain: 0.05, freq: 700 });
-    tone({ f1: 1568, f2: 2093, dur: 0.12, type: 'triangle', gain: 0.025, delay: 0.04 });
+  /** Falsche Katze fällt (kein Miau) */
+  drop: () => {
+    tone({ f1: 900, f2: 300, dur: 0.18, type: 'sine', gain: 0.05 });
+    noise({ dur: 0.12, gain: 0.03, freq: 1600 });
+  },
+  /** Aufprall der Katze; err = harter, dumpfer Aufprall ohne Glitzern */
+  land: (err = false) => {
+    tone({ f1: 220, f2: 65, dur: 0.18, type: 'sine', gain: 0.24 });
+    noise({ dur: 0.1, gain: 0.08, freq: err ? 450 : 800 });
+    if (!err) tone({ f1: 1568, f2: 2093, dur: 0.14, type: 'triangle', gain: 0.045, delay: 0.04 });
   },
   /** Ticks im Takt der X-Welle (Verzögerungen in ms) */
   wave: (delays) => {
@@ -89,8 +100,10 @@ export const sfx = {
     uniq.forEach((d, k) => tone({ f1: step(880, k), f2: step(880, k) * 0.9, dur: 0.05, type: 'triangle', gain: 0.022, delay: (d + 230) / 1000 }));
   },
   error: () => {
-    tone({ f1: 220, f2: 150, dur: 0.22, type: 'square', gain: 0.05 });
-    tone({ f1: 165, f2: 110, dur: 0.26, type: 'square', gain: 0.04, delay: 0.12 });
+    // deutlich hörbar, auch auf kleinen Handylautsprechern (Grundton über 300 Hz)
+    tone({ f1: 440, f2: 330, dur: 0.16, type: 'square', gain: 0.085 });
+    tone({ f1: 330, f2: 247, dur: 0.24, type: 'square', gain: 0.075, delay: 0.14 });
+    tone({ f1: 660, f2: 495, dur: 0.16, type: 'sawtooth', gain: 0.03 });
   },
   poof: () => noise({ dur: 0.25, gain: 0.07, freq: 1400 }),
   hint: () => {

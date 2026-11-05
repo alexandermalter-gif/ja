@@ -8,12 +8,14 @@
     "generate": "node tools/generate-levels.mjs",
     "build": "node tools/build.mjs",
     "test": "node tools/verify-levels.mjs && node tools/test-hints.mjs && node tools/test-daily.mjs && node tools/check-palette.mjs",
-    "serve": "npx --yes http-server -c-1 -p 8080 ."
+    "serve": "esbuild --servedir=. --serve=8080",
+    "test:e2e": "node tools/test-e2e.mjs"
   },
   "dependencies": {
     "three": "0.184.0"
   },
   "devDependencies": {
+    "@fontsource-variable/nunito": "^5.3.0",
     "esbuild": "0.25.10"
   }
 }

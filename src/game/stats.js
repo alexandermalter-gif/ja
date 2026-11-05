@@ -6,6 +6,15 @@ export function formatTime(sec) {
   return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Lange Zeiten lesbar: unter einer Stunde mm:ss, sonst „5 h 03 min“. */
+export function formatLong(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  if (s < 3600) return formatTime(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h} h ${String(m).padStart(2, '0')} min`;
+}
+
 /** Durchschnittliche Bestzeit je Brettgröße (nur gelöste Level). */
 export function averageBySize(levels, best) {
   const sizes = [...new Set(levels.map((l) => l.n))];

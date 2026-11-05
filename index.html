@@ -6,14 +6,11 @@
 <title>Katzen-Sudoku</title>
 <meta name="description" content="Logikrätsel mit 100 Leveln: Setze je eine Katze pro Farbe, Zeile und Spalte – ohne dass sich Katzen berühren.">
 <meta name="theme-color" content="#f6f1ef">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <!-- APP:START -->
-<div id="app">
+<div id="app" lang="de">
   <section id="screen-menu" class="screen">
     <header class="menu-header">
       <div class="brand">
@@ -33,11 +30,14 @@
       <div><small>Sterne</small><b id="menu-stars">0</b></div>
       <div><small>Gelöst</small><b id="menu-solved">0</b></div>
     </div>
-    <section class="daily-card" id="daily-card" aria-label="Tägliches Rätsel"></section>
+    <div id="menu-note" class="menu-note hidden" role="status"></div>
+    <section class="daily-card" id="daily-card" aria-label="Tagesrätsel"></section>
     <div class="menu-actions">
       <button id="btn-skins" class="chip-btn menu-chip"></button>
       <button id="btn-stats" class="chip-btn menu-chip"><span>Statistik</span></button>
       <button id="btn-tutorial" class="chip-btn menu-chip"><span>Tutorial</span></button>
+      <button id="btn-archive" class="chip-btn menu-chip"><span>Archiv</span></button>
+      <button id="btn-free" class="chip-btn menu-chip"><span>Freies Spiel</span></button>
       <button id="btn-hints-info" class="chip-btn menu-chip"></button>
     </div>
     <button id="btn-continue" class="btn btn-primary btn-big"></button>
@@ -46,10 +46,10 @@
 
   <section id="screen-game" class="screen hidden">
     <header class="game-header">
-      <button id="btn-back" class="round-btn" aria-label="Zurück zur Levelauswahl"></button>
+      <button id="btn-back" class="round-btn" aria-label="Zurück zum Menü"></button>
       <div class="hud">
         <div class="stat"><span class="label" id="hud-level-label">Level</span><span class="value" id="hud-level">1</span></div>
-        <div class="stat"><span class="label">Punkte</span><span class="value" id="hud-points">0</span></div>
+        <div class="stat"><span class="label">Sterne</span><span class="value stars-live" id="hud-stars" role="img"></span></div>
         <div class="stat"><span class="label flame" id="hud-flame"></span><span class="value" id="hud-diff">Leicht</span></div>
       </div>
       <button class="round-btn btn-settings" aria-label="Einstellungen"></button>
@@ -70,23 +70,23 @@
 
     <div class="below-board">
       <button id="btn-undo" class="chip-btn"><span>Rückgängig</span></button>
-      <span id="timer" class="timer" aria-label="Spielzeit">00:00</span>
+      <span id="timer" class="timer" role="timer" aria-live="off">00:00</span>
       <button id="btn-restart" class="chip-btn"><span>Leeren</span></button>
     </div>
 
     <div class="tools">
       <button id="tool-joker" class="tool" aria-label="Joker: setzt eine richtige Katze">
-        <span class="ico"></span><span class="badge">1</span><span class="tool-label">Joker</span>
+        <span class="ico"></span><span class="badge">1</span><span class="cost" aria-hidden="true">−★</span><span class="tool-label">Joker</span>
       </button>
       <button id="tool-hint" class="tool" aria-label="Hinweis: erklärt den nächsten Schritt">
-        <span class="ico"></span><span class="badge">3</span><span class="tool-label">Hinweis</span>
+        <span class="ico"></span><span class="badge">3</span><span class="cost" aria-hidden="true">−★</span><span class="tool-label">Hinweis</span>
       </button>
-      <button id="tool-mouse" class="tool" aria-label="Maus: sucht Fehler und knabbert sie weg">
-        <span class="ico"></span><span class="badge">?</span><span class="tool-label">Fehler?</span>
+      <button id="tool-mouse" class="tool" aria-label="Maus: sucht Fehler und knabbert sie weg" title="Maus – sucht Fehler">
+        <span class="ico"></span><span class="badge badge-search"></span><span class="tool-label">Maus</span>
       </button>
     </div>
 
-    <div id="hint-bubble" class="hint-bubble hidden" role="status" aria-live="polite">
+    <div id="hint-bubble" class="hint-bubble hidden" role="region" aria-label="Hinweis">
       <p></p>
       <div class="hint-actions">
         <button id="hint-close" class="btn btn-secondary">Verstanden</button>
@@ -94,7 +94,7 @@
       </div>
     </div>
 
-    <div id="coach" class="coach hidden" role="status" aria-live="polite">
+    <div id="coach" class="coach hidden" role="region" aria-label="Tutorial">
       <div class="coach-head"><span class="coach-step"></span><button id="coach-skip" class="coach-skip">Tutorial beenden</button></div>
       <b class="coach-title"></b>
       <p class="coach-text"></p>
@@ -111,7 +111,7 @@
   <div id="sr-live" class="sr-only" aria-live="polite"></div>
 
   <div id="modal-root"></div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" aria-hidden="true"></div>
 </div>
 <!-- APP:END -->
 <script src="dist/game.js"></script>

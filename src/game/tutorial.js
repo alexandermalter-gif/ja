@@ -34,7 +34,7 @@ export function tutorialTitle(hint) {
 }
 
 export function tutorialAction(hint) {
-  if (hint.action?.type === 'cat') return 'Doppeltippe auf das leuchtende Feld, um die Katze zu setzen.';
+  if (hint.action?.type === 'cat') return 'Tippe doppelt auf das leuchtende Feld, um die Katze zu setzen.';
   const k = hint.action?.cells?.length || 0;
   return k > 1
     ? 'Tippe die rot markierten Felder einmal an – so setzt du dort ein X.'

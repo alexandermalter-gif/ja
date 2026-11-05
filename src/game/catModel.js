@@ -41,12 +41,13 @@ function getMats(skin) {
   return m;
 }
 
-function part(geo, mat, pos, scale, rot) {
+/** Teil des Kopfes; Schatten werfen nur Kopf und Ohren (spart Zeichenaufrufe). */
+function part(geo, mat, pos, scale, rot, shadow = false) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(...pos);
   m.scale.set(...scale);
   if (rot) m.rotation.set(...rot);
-  m.castShadow = true;
+  m.castShadow = shadow;
   return m;
 }
 
@@ -60,7 +61,7 @@ export function createCat(skinId = 'smoking') {
   root.add(head);
 
   // Kopf (Ellipsoid mit Halbachsen 0.4 / 0.35 / 0.3)
-  head.add(part(geo.sphere, mat.fur, [0, 0, 0], [0.4, 0.35, 0.3]));
+  head.add(part(geo.sphere, mat.fur, [0, 0, 0], [0.4, 0.35, 0.3], null, true));
   // Ohren – je eine Gruppe mit Drehpunkt am Ohransatz (zum Zucken)
   const ears = [];
   for (const s of [-1, 1]) {
@@ -69,7 +70,7 @@ export function createCat(skinId = 'smoking') {
     ear.rotation.z = -0.45 * s;
     ear.userData.base = ear.rotation.z;
     const spot = mat.spots.find((p) => p.side === s);
-    ear.add(part(geo.cone, spot ? spot.mat : mat.earOuter, [0, 0.15, -0.02], [0.15, 0.3, 0.1]));
+    ear.add(part(geo.cone, spot ? spot.mat : mat.earOuter, [0, 0.15, -0.02], [0.15, 0.3, 0.1], null, true));
     ear.add(part(geo.cone, mat.ear, [0, 0.136, 0.05], [0.085, 0.2, 0.05]));
     head.add(ear);
     ears.push(ear);
@@ -119,9 +120,7 @@ export function createCat(skinId = 'smoking') {
   // Schnurrhaare
   for (const s of [-1, 1]) {
     for (let i = 0; i < 3; i++) {
-      const w = part(geo.whisker, mat.whisker, [0.33 * s, -0.08 - i * 0.04, 0.24], [0.006, 0.22, 0.006], [0, 0, (Math.PI / 2) * s + (i - 1) * 0.16 * s]);
-      w.castShadow = false;
-      head.add(w);
+      head.add(part(geo.whisker, mat.whisker, [0.33 * s, -0.08 - i * 0.04, 0.24], [0.006, 0.22, 0.006], [0, 0, (Math.PI / 2) * s + (i - 1) * 0.16 * s]));
     }
   }
 
@@ -145,27 +144,37 @@ export function createCat(skinId = 'smoking') {
   return root;
 }
 
-/** Leerlauf-Animation: Atmen, Blinzeln, Ohrenzucken, Umschauen – plus Squash & Stretch. */
-export function animateCat(cat, now) {
+/**
+ * Leerlauf-Animation: Atmen, Blinzeln, Ohrenzucken, Umschauen – plus Squash & Stretch.
+ * doze 0..1: Katze döst (Augen zu, Kopf sinkt leicht). still: keine Leerlaufbewegung (ruhige Animationen).
+ */
+export function animateCat(cat, now, doze = 0, still = false) {
   const ud = cat.userData;
   const t = now / 1000 + ud.phase;
   const sq = ud.squash;
+  const idle = still ? 0 : 1 - doze;
   ud.head.scale.set(
-    (1 + Math.sin(t * 2.2) * 0.012) * (1 + sq.x),
-    (1 + Math.sin(t * 2.2 + 0.6) * 0.02) * (1 + sq.y),
+    (1 + Math.sin(t * 2.2) * 0.012 * idle) * (1 + sq.x),
+    (1 + Math.sin(t * 2.2 + 0.6) * 0.02 * idle) * (1 + sq.y),
     1,
   );
-  ud.head.rotation.z = Math.sin(t * 0.9) * 0.05;
+  ud.head.rotation.z = Math.sin(t * 0.9) * 0.05 * idle;
+  ud.head.rotation.x = 0.12 * doze;
   ud.head.rotation.y = ud.shake;
 
-  // Blinzeln
+  // Blinzeln (nicht beim Dösen)
   let open = 1;
   const dt = now - ud.blinkAt;
   if (dt > 0) {
-    if (dt < 140) open = Math.abs(1 - dt / 70) * 0.9 + 0.1;
-    else ud.blinkAt = now + 2200 + Math.random() * 5000;
+    if (dt < 140 && idle > 0.5) open = Math.abs(1 - dt / 70) * 0.9 + 0.1;
+    else if (dt >= 140) ud.blinkAt = now + 2200 + Math.random() * 5000;
   }
+  open = open * (1 - doze) + 0.1 * doze;
   for (const e of ud.eyes) e.scale.y = open;
+  if (still || doze >= 1) {
+    ud.ears.forEach((ear) => { ear.rotation.z = ear.userData.base; });
+    return;
+  }
 
   // Ohrenzucken
   const tw = now - ud.twitchAt;

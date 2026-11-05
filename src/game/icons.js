@@ -62,11 +62,38 @@ export function fishIcon(lost = false) {
 </svg>`;
 }
 
-/** Katzensilhouette für die Farbleiste. */
-export function catHeadIcon(color, found) {
-  return `<svg viewBox="0 0 40 36" aria-hidden="true" class="cat-head${found ? ' found' : ''}">
-  <path d="M6 15 5 2.5l10.5 7.2q4.5-1.4 9 0L35 2.5 34 15q3 4.5 2.4 9.6C35.3 32 28.5 34.5 20 34.5S4.7 32 3.6 24.6Q3 19.5 6 15z" fill="${color}"/>
-  ${found ? '<circle cx="13.5" cy="20" r="2.2" fill="#2c2b31"/><circle cx="26.5" cy="20" r="2.2" fill="#2c2b31"/><path d="M18.4 24.5h3.2L20 26.3z" fill="#f08aa0"/>' : ''}
+/** SVG-Muster wie auf den Kacheln (Barrierefreiheit), Kachelgröße 8. */
+function patternDef(idx, id) {
+  const st = 'stroke="rgba(0,0,0,.32)" stroke-width="1.3" fill="none"';
+  const body = [
+    '<circle cx="4" cy="4" r="1.3" fill="rgba(0,0,0,.32)"/>',
+    `<path d="M0 8 8 0" ${st}/>`,
+    `<path d="M0 4h8" ${st}/>`,
+    '<rect x="0.5" y="0.5" width="3" height="3" fill="rgba(0,0,0,.28)"/>',
+    `<path d="M4 0v8" ${st}/>`,
+    `<path d="M0 0l8 8" ${st}/>`,
+    `<circle cx="4" cy="4" r="2.4" ${st}/>`,
+    `<path d="M4 0v8M0 4h8" ${st}/>`,
+    `<path d="M0 5l2-2 2 2 2-2 2 2" ${st}/>`,
+    `<path d="M2.5 4h3M4 2.5v3" ${st}/>`,
+  ][idx % 10];
+  return `<defs><pattern id="${id}" width="8" height="8" patternUnits="userSpaceOnUse">${body}</pattern></defs>`;
+}
+
+let patUid = 0;
+const HEAD = 'M6 15 5 2.5l10.5 7.2q4.5-1.4 9 0L35 2.5 34 15q3 4.5 2.4 9.6C35.3 32 28.5 34.5 20 34.5S4.7 32 3.6 24.6Q3 19.5 6 15z';
+
+/**
+ * Katzenkopf für die Farbleiste: immer in voller Flächenfarbe.
+ * Offen: ohne Gesicht mit dunklem Rand; gefunden: Gesicht und Haken. patternIdx: Muster darüber.
+ */
+export function catHeadIcon(color, found, patternIdx = null) {
+  const pid = patternIdx != null ? `cp${++patUid}` : null;
+  return `<svg viewBox="-2 -2 44 40" aria-hidden="true" class="cat-head${found ? ' found' : ''}">
+  ${pid ? patternDef(patternIdx, pid) : ''}
+  <path d="${HEAD}" fill="${color}" stroke="${found ? 'rgba(0,0,0,.18)' : 'var(--ink-soft, #8d635a)'}" stroke-width="${found ? 1 : 2}"/>
+  ${pid ? `<path d="${HEAD}" fill="url(#${pid})"/>` : ''}
+  ${found ? '<circle cx="13.5" cy="20" r="2.4" fill="#2c2b31"/><circle cx="26.5" cy="20" r="2.4" fill="#2c2b31"/><path d="M18.4 24.5h3.2L20 26.3z" fill="#f08aa0"/><circle cx="33" cy="30" r="6.5" fill="#3a853d" stroke="#fff" stroke-width="1.5"/><path d="m29.8 30.2 2.2 2.2 4-4.4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' : ''}
 </svg>`;
 }
 
@@ -95,3 +122,9 @@ export const ICON_PAW = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="cu
 export const ICON_CALENDAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h2.5A1.5 1.5 0 0 1 21 5.5v14a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-14A1.5 1.5 0 0 1 4.5 4H7zM5 9v10h14V9zm2 2h4v4H7z"/></svg>`;
 
 export const ICON_CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+export const ICON_SEARCH = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="m15 15 5 5" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>`;
+
+export const ICON_DICE = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="8.3" cy="8.3" r="1.6" fill="currentColor"/><circle cx="15.7" cy="15.7" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="15.7" cy="8.3" r="1.6" fill="currentColor"/><circle cx="8.3" cy="15.7" r="1.6" fill="currentColor"/></svg>`;
+
+export const ICON_ARCHIVE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4.5A1.5 1.5 0 0 1 4.5 3h15A1.5 1.5 0 0 1 21 4.5V8H3zM4 9.5h16v10a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zm5 2.5v2h6v-2z"/></svg>`;

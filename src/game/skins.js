@@ -32,8 +32,37 @@ export const SKINS = [
     spots: [{ color: '#e9933c', side: -1 }, { color: '#2c2b31', side: 1 }],
   },
   {
+    id: 'zimt', name: 'Zimt', unlock: { streak: 7 },
+    fur: '#8a5a3c', muzzle: '#e2c09b', blaze: false, ear: '#e9a990', sclera: '#f2c94c', pupil: '#1a120c',
+    stripes: '#5e3a24',
+  },
+  {
+    id: 'karamell', name: 'Karamell', unlock: { stars: 150 },
+    fur: '#c4834f', muzzle: '#f7e7d2', blaze: true, ear: '#f3b9a4', sclera: '#ffffff', pupil: '#2a1d14',
+  },
+  {
     id: 'gold', name: 'Goldkatze', unlock: { stars: 200 },
     fur: '#e3b23c', muzzle: '#fff1c2', blaze: true, ear: '#f6cf73', sclera: '#ffffff', pupil: '#2b2210', metal: true,
+  },
+  {
+    id: 'fuchs', name: 'Rotfuchs', unlock: { daily: 30 },
+    fur: '#d4562b', muzzle: '#fff3e6', blaze: true, ear: '#f6b0a0', earOuter: '#3a2a22', sclera: '#c8e86a', pupil: '#1d1a10',
+  },
+  {
+    id: 'mitternacht', name: 'Mitternacht', unlock: { stars: 250 },
+    fur: '#2b3352', muzzle: '#3d4769', blaze: false, ear: '#8e7fb8', sclera: '#ffe27a', pupil: '#121522', slit: true,
+  },
+  {
+    id: 'mond', name: 'Mondkatze', unlock: { streak: 30 },
+    fur: '#e6e4f0', muzzle: '#ffffff', blaze: false, ear: '#c9cde0', earOuter: '#9aa0b8', sclera: '#8fd0ff', pupil: '#1a2433',
+  },
+  {
+    id: 'kristall', name: 'Kristall', unlock: { stars: 300 },
+    fur: '#bfe3f0', muzzle: '#f4fbff', blaze: true, ear: '#f7b6d2', sclera: '#c6a6ff', pupil: '#2a1d44',
+  },
+  {
+    id: 'lavendel', name: 'Lavendel', unlock: { daily: 100 },
+    fur: '#a48cc8', muzzle: '#efe6fa', blaze: false, ear: '#f2b4d0', sclera: '#fff3a6', pupil: '#24182f',
   },
 ];
 
@@ -53,8 +82,8 @@ export function unlockText(skin) {
   const u = skin.unlock;
   if (!u) return 'Von Anfang an dabei';
   if (u.stars) return `${u.stars} Sterne sammeln`;
-  if (u.streak) return `${u.streak} Tage Serie beim Täglichen Rätsel`;
-  if (u.daily) return `${u.daily} Tägliche Rätsel lösen`;
+  if (u.streak) return `${u.streak} Tage Serie beim Tagesrätsel`;
+  if (u.daily) return `${u.daily} Tagesrätsel lösen`;
   return '';
 }
 
@@ -66,6 +95,23 @@ export function unlockProgress(skin, progress) {
   if (u.streak) return Math.min(1, progress.streak / u.streak);
   if (u.daily) return Math.min(1, progress.daily / u.daily);
   return 0;
+}
+
+/** Noch fehlender Betrag bis zur Freischaltung (für den Menü-Chip). */
+function remaining(skin, progress) {
+  const u = skin.unlock;
+  if (u.stars) return { left: u.stars - progress.stars, ratio: progress.stars / u.stars, text: (k) => `Noch ${k}★ bis ${skin.name}` };
+  if (u.streak) return { left: u.streak - progress.streak, ratio: progress.streak / u.streak, text: (k) => `Noch ${k} ${k === 1 ? 'Tag' : 'Tage'} Serie bis ${skin.name}` };
+  return { left: u.daily - progress.daily, ratio: progress.daily / u.daily, text: (k) => `Noch ${k} ${k === 1 ? 'Tagesrätsel' : 'Tagesrätsel'} bis ${skin.name}` };
+}
+
+/** Nächster Meilenstein: die gesperrte Katze, der man am nächsten ist. */
+export function nextMilestone(progress) {
+  const open = SKINS.filter((s) => s.unlock && !isSkinUnlocked(s, progress)).map((s) => ({ s, r: remaining(s, progress) }));
+  if (!open.length) return null;
+  open.sort((a, b) => b.r.ratio - a.r.ratio || a.r.left - b.r.left);
+  const { s, r } = open[0];
+  return { skin: s, left: r.left, text: r.text(r.left) };
 }
 
 let uid = 0;

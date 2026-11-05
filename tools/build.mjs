@@ -1,6 +1,8 @@
 // Baut das Spiel:
 //   dist/game.js            – gebündeltes Skript für index.html
-//   dist/katzen-sudoku.html – komplette Einzeldatei (CSS + JS eingebettet, läuft auch per Doppelklick)
+//   dist/katzen-sudoku.html – komplette Einzeldatei (CSS, Schrift, JS eingebettet; läuft auch per Doppelklick)
+//   dist/embed.html         – Fragment ohne <html>/<head>/<body> zum Einbetten (z. B. als Artifact)
+// Jede Ersetzung wird geprüft: Ändert sich index.html so, dass ein Platzhalter fehlt, bricht der Build ab.
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +10,20 @@ import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-mkdirSync(dist, { recursive: true });
+const outDir = process.env.BUILD_OUT || dist;
+mkdirSync(outDir, { recursive: true });
+
+function fail(msg) {
+  console.error(`Build abgebrochen: ${msg}`);
+  process.exit(1);
+}
+
+/** Ersetzt `needle` genau einmal – sonst Abbruch. */
+function replaceOnce(text, needle, replacement, what) {
+  const count = text.split(needle).length - 1;
+  if (count !== 1) fail(`${what}: „${needle}“ kommt ${count}-mal vor (erwartet: genau einmal).`);
+  return text.replace(needle, () => replacement);
+}
 
 await build({
   entryPoints: [join(root, 'src', 'main.js')],
@@ -16,24 +31,38 @@ await build({
   format: 'iife',
   minify: true,
   target: ['es2020'],
-  outfile: join(dist, 'game.js'),
+  outfile: join(outDir, 'game.js'),
   legalComments: 'none',
   logLevel: 'info',
 });
 
 const html = readFileSync(join(root, 'index.html'), 'utf8');
-const css = readFileSync(join(root, 'style.css'), 'utf8');
-const js = readFileSync(join(dist, 'game.js'), 'utf8').replace(/<\/script/gi, '<\\/script');
-const app = html.slice(html.indexOf('<!-- APP:START -->'), html.indexOf('<!-- APP:END -->') + '<!-- APP:END -->'.length);
+const cssRaw = readFileSync(join(root, 'style.css'), 'utf8');
+const font = readFileSync(join(root, 'assets', 'nunito-latin.woff2')).toString('base64');
+const js = readFileSync(join(outDir, 'game.js'), 'utf8').replace(/<\/script/gi, '<\\/script');
 
-const standalone = html
-  .replace('<link rel="stylesheet" href="style.css">', () => `<style>\n${css}</style>`)
-  .replace('<script src="dist/game.js"></script>', () => `<script>${js}</script>`);
-writeFileSync(join(dist, 'katzen-sudoku.html'), standalone);
+// Schrift als data:-URI einbetten (keine Anfrage an fremde Server, auch offline)
+const css = replaceOnce(cssRaw, 'url(assets/nunito-latin.woff2)', `url(data:font/woff2;base64,${font})`, 'style.css');
 
-// Fragment ohne <html>/<head>/<body> – zum Einbetten bzw. Veröffentlichen als Artifact.
-const fontLink = html.match(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com[^>]*>/)[0];
-const fragment = `<title>Katzen-Sudoku</title>\n${fontLink}\n<style>\n${css}</style>\n${app}\n<script>${js}</script>\n`;
-writeFileSync(join(dist, 'embed.html'), fragment);
+const START = '<!-- APP:START -->';
+const END = '<!-- APP:END -->';
+if (html.split(START).length !== 2 || html.split(END).length !== 2) fail('Marker APP:START/APP:END fehlen oder sind doppelt.');
+const app = html.slice(html.indexOf(START), html.indexOf(END) + END.length);
 
-console.log('Fertig: dist/game.js, dist/katzen-sudoku.html, dist/embed.html');
+let standalone = replaceOnce(html, '<link rel="stylesheet" href="style.css">', `<style>\n${css}</style>`, 'index.html (CSS)');
+standalone = replaceOnce(standalone, '<script src="dist/game.js"></script>', `<script>${js}</script>`, 'index.html (Skript)');
+
+// Fragment: Zeichensatz und Viewport mitgeben, falls die Einbettung sie nicht setzt
+const fragment = `<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<title>Katzen-Sudoku</title>\n<style>\n${css}</style>\n${app}\n<script>${js}</script>\n`;
+
+// Abschlussprüfung: keine Verweise auf externe Dateien mehr, plausible Größe
+for (const [name, text] of [['katzen-sudoku.html', standalone], ['embed.html', fragment]]) {
+  for (const bad of ['src="dist/', 'href="style.css', 'fonts.googleapis.com', 'url(assets/']) {
+    if (text.includes(bad)) fail(`${name} enthält noch „${bad}“.`);
+  }
+  if (text.length < 500_000) fail(`${name} ist mit ${text.length} Byte verdächtig klein.`);
+}
+
+writeFileSync(join(outDir, 'katzen-sudoku.html'), standalone);
+writeFileSync(join(outDir, 'embed.html'), fragment);
+console.log(`Fertig: ${outDir === dist ? 'dist' : outDir}/game.js, katzen-sudoku.html, embed.html`);

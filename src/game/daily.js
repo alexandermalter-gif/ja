@@ -2,6 +2,9 @@
 // montags leicht, zum Wochenende hin schwerer. Dazu Serie (Tage in Folge) und Wochenansicht.
 import { mulberry32, generateOne, assignColors } from '../logic/generator.js';
 
+/** Version der Tagesrätsel-Erzeugung – ändert sich nur bei bewusst neuen Rätseln. */
+export const DAILY_CACHE_VERSION = 2;
+
 export const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
