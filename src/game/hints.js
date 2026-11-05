@@ -5,32 +5,54 @@ import {
 import { PALETTE } from '../logic/palette.js';
 import { MARK_CAT, MARK_X, MARK_AUTO_X } from './marks.js';
 
-/** Name einer Einheit, optional mit Artikel ('die' = Nom./Akk., 'der' = Gen./Dat.). */
-export function unitName(geo, colors, u, article = '') {
-  const unit = geo.units[u];
-  const a = article ? `${article} ` : '';
-  if (unit.type === UNIT_ROW) return `${a}Zeile ${unit.index + 1}`;
-  if (unit.type === UNIT_COL) return `${a}Spalte ${unit.index + 1}`;
-  return `${a}Farbe ${PALETTE[colors[unit.index]].name}`;
-}
+/** Farbe als Adjektiv („die himmelblaue Katze“). */
+const ADJ = {
+  Lila: 'lilafarbene',
+  Hellgrün: 'hellgrüne',
+  Braun: 'braune',
+  Orange: 'orangefarbene',
+  Gelb: 'gelbe',
+  Dunkelblau: 'dunkelblaue',
+  Rosa: 'rosafarbene',
+  Rot: 'rote',
+  Türkis: 'türkisfarbene',
+  Himmelblau: 'himmelblaue',
+};
+
+const NUM = ['null', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
+/** Zahlen bis zwölf als Wort. */
+export const numWord = (k) => NUM[k] || String(k);
 
 const listJoin = (arr) => (arr.length <= 1 ? arr.join('') : `${arr.slice(0, -1).join(', ')} und ${arr[arr.length - 1]}`);
 
-function plural(type, k) {
+const colorName = (colors, idx) => PALETTE[colors[idx]].name;
+
+/** Name einer Einheit ohne Artikel: „Zeile 3“, „Spalte 1“, „Himmelblau“. */
+export function unitName(geo, colors, u) {
+  const unit = geo.units[u];
+  if (unit.type === UNIT_ROW) return `Zeile ${unit.index + 1}`;
+  if (unit.type === UNIT_COL) return `Spalte ${unit.index + 1}`;
+  return colorName(colors, unit.index);
+}
+
+/** Mehrere Einheiten gleicher Art: „Zeilen 2 und 5“, „Rot und Rosa“. */
+function unitList(geo, colors, list) {
+  const type = geo.units[list[0]].type;
+  const sorted = [...list].sort((a, b) => a - b);
+  if (type === UNIT_REGION) return listJoin(sorted.map((u) => colorName(colors, geo.units[u].index)));
+  const word = type === UNIT_ROW ? (list.length === 1 ? 'Zeile' : 'Zeilen') : (list.length === 1 ? 'Spalte' : 'Spalten');
+  return `${word} ${listJoin(sorted.map((u) => String(geo.units[u].index + 1)))}`;
+}
+
+function typeWord(type, k) {
   if (type === UNIT_ROW) return k === 1 ? 'Zeile' : 'Zeilen';
   if (type === UNIT_COL) return k === 1 ? 'Spalte' : 'Spalten';
   return k === 1 ? 'Farbe' : 'Farben';
 }
 
-function shortName(geo, colors, u) {
-  const unit = geo.units[u];
-  if (unit.type === UNIT_REGION) return PALETTE[colors[unit.index]].name;
-  return String(unit.index + 1);
-}
-
 /**
  * Liefert einen Hinweis:
- * { text, focus: [Zellen], target?, eliminate?: [Zellen], fix?: [Zellen], action: {type, cells} }
+ * { kind, text, focus: [Zellen], target?, eliminate?: [Zellen], ghost?: [Zellen], action: {type, cells} }
  */
 export function computeHint(geo, level, marks) {
   const { colors } = level;
@@ -47,7 +69,7 @@ export function computeHint(geo, level, marks) {
   if (wrongCats.length) {
     return {
       kind: 'wrongCat',
-      text: 'Diese Katze sitzt leider nicht richtig. Nimm sie wieder weg und schau dir die Regeln für dieses Feld noch einmal an.',
+      text: 'Diese Katze gehört nicht hierher – „Ausführen“ nimmt sie weg.',
       focus: [wrongCats[0]],
       eliminate: [wrongCats[0]],
       action: { type: 'clear', cells: [wrongCats[0]] },
@@ -56,13 +78,13 @@ export function computeHint(geo, level, marks) {
   if (wrongX.length) {
     return {
       kind: 'wrongX',
-      text: 'Hier steht ein X, das nicht stimmt – auf diesem Feld ist eine Katze durchaus möglich.',
+      text: 'Dieses X ist zu voreilig – hier kann noch eine Katze sitzen.',
       focus: [wrongX[0]],
       action: { type: 'clear', cells: [wrongX[0]] },
     };
   }
 
-  // 2. Solver-Zustand aus dem Spielstand ableiten
+  // 2. Löser-Zustand aus dem Spielstand ableiten
   const st = newState(geo);
   marks.forEach((m, i) => { if (m === MARK_CAT) placeCat(geo, st, i); });
   const blocked = [];
@@ -83,11 +105,15 @@ export function computeHint(geo, level, marks) {
   // Einzelfeld hat Vorrang: Katze setzen
   if (step.tech === 1) {
     const u = step.unit;
+    const unit = geo.units[u];
+    let text;
+    if (unit.type === UNIT_REGION && unit.cells.length === 1) text = `Die Farbe ${unitName(geo, colors, u)} hat nur ein einziges Feld – hier muss die Katze hin.`;
+    else text = `In ${unitName(geo, colors, u)} ist nur noch ein Feld frei – hier muss die Katze hin.`;
     return {
       kind: 'single',
-      unitType: geo.units[u].type,
-      text: `In ${unitName(geo, colors, u, 'der')} ist nur noch ein Feld möglich – hier muss die Katze hin.`,
-      focus: geo.units[u].cells,
+      unitType: unit.type,
+      text,
+      focus: unit.cells,
       target: step.place,
       action: { type: 'cat', cells: [step.place] },
     };
@@ -104,30 +130,67 @@ export function computeHint(geo, level, marks) {
     };
   }
 
-  const elim = step.eliminate;
+  let elim = step.eliminate;
   let text = '';
   let focus = [];
+  let ghost = [];
+  const free = (u) => geo.units[u].cells.filter((c) => st.cand[c]);
+
   if (step.kind === 'confine') {
     const u = step.unit;
     const v = step.target;
-    text = `Alle freien Felder ${unitName(geo, colors, u, 'der')} liegen in ${unitName(geo, colors, v, 'der')}. `
-      + `Die Katze für ${unitName(geo, colors, v, 'die')} muss also genau dort sitzen – die übrigen Felder ${unitName(geo, colors, v, 'der')} fallen weg.`;
-    focus = geo.units[u].cells.filter((c) => st.cand[c]);
+    const U = unitName(geo, colors, u);
+    const V = unitName(geo, colors, v);
+    if (geo.units[u].type === UNIT_REGION) {
+      // Farbe liegt ganz in einer Zeile/Spalte
+      text = `Alle freien Felder von ${U} liegen in ${V}. Die Katze von ${V} muss also die ${ADJ[U] || U} sein – die anderen Felder von ${V} fallen weg.`;
+    } else {
+      // Zeile/Spalte hat nur noch Felder einer Farbe
+      text = `${U} hat nur noch freie Felder in ${V}. Die ${ADJ[V] || V} Katze sitzt also in ${U} – die übrigen Felder von ${V} fallen weg.`;
+    }
+    focus = free(u);
   } else if (step.kind === 'blockade') {
+    // Alle Felder sammeln, die dieselbe Einheit komplett blockieren würden
     const u = step.unit;
-    text = `Eine Katze auf dem markierten Feld würde alle freien Felder ${unitName(geo, colors, u, 'der')} blockieren. Also kann dort keine Katze sitzen.`;
-    focus = geo.units[u].cells.filter((c) => st.cand[c]);
+    const cands = free(u);
+    const mask = geo.attackMask;
+    elim = [];
+    for (let c = 0; c < geo.size; c++) {
+      if (!st.cand[c] || geo.cellUnits[c].includes(u)) continue;
+      if (cands.every((x) => mask[c][x])) elim.push(c);
+    }
+    const U = unitName(geo, colors, u);
+    text = elim.length > 1
+      ? `Jedes der ${numWord(elim.length)} rot markierten Felder würde alle freien Felder von ${U} blockieren. Dort kann also keine Katze sitzen.`
+      : `Eine Katze auf dem rot markierten Feld würde alle freien Felder von ${U} blockieren. Dort kann also keine Katze sitzen.`;
+    focus = cands;
   } else if (step.kind === 'subset') {
     const ta = geo.units[step.units[0]].type;
-    const tb = geo.units[step.targets[0]].type;
-    const a = step.units.map((u) => shortName(geo, colors, u));
-    const b = step.targets.map((u) => shortName(geo, colors, u)).sort((x, y) => (Number(x) || 0) - (Number(y) || 0));
-    text = `Die ${plural(ta, step.k)} ${listJoin(a)} haben ihre freien Felder nur in den ${plural(tb, step.k)} ${listJoin(b)}. `
-      + `Damit sind diese ${step.k} ${plural(tb, step.k)} für sie reserviert – alle anderen Felder darin fallen weg.`;
-    focus = step.units.flatMap((u) => geo.units[u].cells.filter((c) => st.cand[c]));
+    const k = step.k;
+    const A = unitList(geo, colors, step.units);
+    const B = unitList(geo, colors, step.targets);
+    const ofA = ta === UNIT_REGION ? `von ${A}` : `der ${A}`;
+    const inB = geo.units[step.targets[0]].type === UNIT_REGION ? B : `den ${B}`;
+    const ofB = geo.units[step.targets[0]].type === UNIT_REGION ? `von ${B}` : `der ${B}`;
+    text = `Alle freien Felder ${ofA} liegen in ${inB}. Diese ${numWord(k)} ${typeWord(ta, k)} brauchen also ${k === 2 ? 'beide Katzen' : `alle ${numWord(k)} Katzen`} ${ofB} – die übrigen Felder ${ofB} fallen weg.`;
+    focus = step.units.flatMap(free);
+  } else if (step.kind === 'block2x2') {
+    const t = geo.units[step.units[0]].type;
+    const A = unitList(geo, colors, step.units);
+    const ofA = t === UNIT_REGION ? `von ${A}` : `der ${A}`;
+    text = `Alle freien Felder ${ofA} liegen in den zwei hervorgehobenen Bereichen. In jeden passt höchstens eine Katze – in einem 2×2-Block berühren sich zwei Katzen immer. Also sitzt in jedem Bereich genau eine der beiden Katzen ${ofA}, die übrigen Felder darin fallen weg.`;
+    focus = [...new Set(step.covers.flat())];
   } else if (step.kind === 'contradiction') {
-    text = `Angenommen, auf dem markierten Feld säße eine Katze: Dann bliebe für ${unitName(geo, colors, step.unit, 'die')} am Ende kein freies Feld mehr übrig. Also kann dort keine Katze sitzen.`;
+    const E = unitName(geo, colors, step.unit);
+    ghost = (step.forced || []).filter((c) => c !== step.cell);
+    if (ghost.length === 1) {
+      text = `Angenommen, auf dem rot markierten Feld säße eine Katze. Dann müsste eine weitere Katze auf das blasse Feld – und danach bliebe für ${E} kein freies Feld mehr. Also kann auf dem rot markierten Feld keine Katze sitzen.`;
+    } else if (ghost.length > 1) {
+      text = `Angenommen, auf dem rot markierten Feld säße eine Katze. Dann müssten nacheinander die ${numWord(ghost.length)} blassen Katzen gesetzt werden – und danach bliebe für ${E} kein freies Feld mehr. Also kann auf dem rot markierten Feld keine Katze sitzen.`;
+    } else {
+      text = `Angenommen, auf dem rot markierten Feld säße eine Katze: Dann bliebe für ${E} kein freies Feld mehr. Also kann dort keine Katze sitzen.`;
+    }
     focus = geo.units[step.unit].cells;
   }
-  return { kind: step.kind, text, focus, eliminate: elim, action: { type: 'x', cells: elim } };
+  return { kind: step.kind, text, focus, eliminate: elim, ghost, action: { type: 'x', cells: elim } };
 }

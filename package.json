@@ -5,11 +5,15 @@
   "description": "Katzen-Sudoku – browserbasiertes Logikrätsel mit three.js (1 Katze pro Farbe, Zeile und Spalte, Katzen dürfen sich nicht berühren).",
   "type": "module",
   "scripts": {
-    "generate": "node tools/generate-levels.mjs",
     "build": "node tools/build.mjs",
-    "test": "node tools/verify-levels.mjs && node tools/test-hints.mjs && node tools/test-daily.mjs && node tools/check-palette.mjs",
-    "serve": "esbuild --servedir=. --serve=8080",
-    "test:e2e": "node tools/test-e2e.mjs"
+    "test": "node tools/test-units.mjs && TZ=Europe/Berlin node tools/test-units.mjs && TZ=America/Santiago node tools/test-units.mjs && node tools/verify-levels.mjs && node tools/test-hints.mjs && node tools/test-daily.mjs && node tools/check-palette.mjs",
+    "test:e2e": "node tools/test-e2e.mjs",
+    "check:dist": "node tools/check-dist.mjs",
+    "typecheck": "npx --yes -p typescript@5.6.3 tsc -p jsconfig.json",
+    "generate": "node tools/generate-levels.mjs",
+    "generate:dailies": "node tools/generate-dailies.mjs",
+    "recolor": "node tools/recolor-levels.mjs",
+    "serve": "esbuild --servedir=. --serve=8080"
   },
   "dependencies": {
     "three": "0.184.0"

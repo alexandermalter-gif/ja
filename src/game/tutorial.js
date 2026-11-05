@@ -28,6 +28,7 @@ export function tutorialTitle(hint) {
     case 'confine': return 'Eingesperrt';
     case 'blockade': return 'Blockade';
     case 'subset': return 'Gruppen';
+    case 'block2x2': return 'Zweierblock';
     case 'contradiction': return 'Widerspruch';
     default: return 'Nächster Schritt';
   }

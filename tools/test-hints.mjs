@@ -1,8 +1,9 @@
 // Löst jedes Level nur mit Hinweisen (wie ein Spieler, der immer „Ausführen“ drückt).
+// Wie im Spiel setzt jede Katze sofort automatische X auf alle Felder, die sie blockiert.
 import { LEVELS } from '../src/logic/levels.js';
 import { makeGeometry } from '../src/logic/solver.js';
 import { computeHint } from '../src/game/hints.js';
-import { MARK_EMPTY, MARK_X, MARK_CAT } from '../src/game/marks.js';
+import { MARK_EMPTY, MARK_X, MARK_CAT, MARK_AUTO_X } from '../src/game/marks.js';
 
 const examples = new Map();
 let failed = 0;
@@ -18,10 +19,14 @@ for (const l of LEVELS) {
     if (cats === l.n) break;
     const h = computeHint(geo, level, marks);
     if (!h.action) { failed++; console.error(`Level ${l.id}: kein Hinweis, obwohl ungelöst`); break; }
-    const kind = h.text.split(' ').slice(0, 3).join(' ');
-    if (!examples.has(kind)) examples.set(kind, `L${l.id}: ${h.text}`);
+    const kind = `${h.kind}${h.ghost?.length ? '+geist' : ''}${h.eliminate?.length > 1 && h.kind === 'blockade' ? '+gruppe' : ''}`;
+    if (!examples.has(kind)) examples.set(kind, `L${l.id} [${kind}]: ${h.text}`);
+    if (h.kind === 'blocked') { failed++; console.error(`Level ${l.id}: Hinweis „blockiert“ trotz automatischer X`); break; }
     const a = h.action;
-    if (a.type === 'cat') marks[a.cells[0]] = MARK_CAT;
+    if (a.type === 'cat') {
+      marks[a.cells[0]] = MARK_CAT;
+      for (const x of geo.attacks[a.cells[0]]) if (marks[x] === MARK_EMPTY) marks[x] = MARK_AUTO_X;
+    }
     if (a.type === 'x') a.cells.forEach((c) => { if (marks[c] === MARK_EMPTY) marks[c] = MARK_X; });
     if (a.type === 'clear') a.cells.forEach((c) => { marks[c] = MARK_EMPTY; });
   }

@@ -58,6 +58,12 @@ export const TRICKS = [
     rows: ['a!a!b!crcr', 'a!b!b!crcr', 'c.c.c.c.d.', 'c.e.e.d.d.', 'e.e.e.d.d.'],
   },
   {
+    tech: 4.5,
+    name: 'Zweierblock',
+    text: 'In einen 2×2-Block passt höchstens eine Katze. Liegen alle freien Felder zweier Zeilen in zwei solchen Bereichen, bekommt jeder Bereich genau eine dieser Katzen – die übrigen Felder darin fallen weg.',
+    rows: ['a!a!b!b!c.', 'arb!b!brc.', 'c.c.c.c.c.', 'd.d.e.e.e.', 'd.d.e.e.e.'],
+  },
+  {
     tech: 5,
     name: 'Wenn-dann',
     text: 'Nimm an, auf einem Feld säße eine Katze, und denke die Folgen weiter. Bleibt dann für eine Farbe, Zeile oder Spalte kein Feld übrig, war die Annahme falsch – das Feld bekommt ein X.',
@@ -66,7 +72,7 @@ export const TRICKS = [
 ];
 
 /** Trick-Nummer für eine Löser-Technik (Widerspruch mit langer Kette zählt als Wenn-dann). */
-export const trickFor = (tech) => TRICKS.find((t) => t.tech === Math.min(5, tech)) || null;
+export const trickFor = (tech) => TRICKS.find((t) => t.tech === Math.min(5, Math.floor(tech))) || null;
 
 export function trickHtml(t) {
   return `<div class="trick">${trickSvg(t.rows, `Beispiel: ${t.name}`)}<p><b>${t.name}.</b> ${t.text}</p></div>`;

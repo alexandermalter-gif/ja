@@ -1,24 +1,15 @@
-// Tägliches Rätsel: für alle Spieler am selben Tag gleich (Datum = Zufallsstartwert),
-// montags leicht, zum Wochenende hin schwerer. Dazu Serie (Tage in Folge) und Wochenansicht.
-import { mulberry32, generateOne, assignColors } from '../logic/generator.js';
+// Tagesrätsel: für alle Spieler am selben Tag gleich, montags leicht, zum Wochenende hin
+// schwerer. Die Rätsel kommen aus der vorberechneten Tabelle (dailies.js); nur Tage außerhalb
+// davon werden live erzeugt. Dazu Serie (Tage in Folge) und Wochenansicht.
+import { DAILY_TABLE_START, DAILY_TABLE } from '../logic/dailies.js';
+import { DAILY_TARGETS, generateDailyV3, decodeDaily } from '../logic/dailyGen.js';
+import { tierFor } from './scoring.js';
 
-/** Version der Tagesrätsel-Erzeugung – ändert sich nur bei bewusst neuen Rätseln. */
-export const DAILY_CACHE_VERSION = 2;
+/** Version der live erzeugten Tagesrätsel (für den Zwischenspeicher). */
+export const DAILY_CACHE_VERSION = 3;
 
 export const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-
-// Index = Date.getDay() (0 = Sonntag)
-// score = Bewertung des logischen Lösers (siehe solver.js), Zielbereich je Wochentag
-export const DAILY_PLAN = [
-  { n: 9, minSize: 3, tier: 3, score: [90, 400] },
-  { n: 6, minSize: 1, tier: 0, score: [0, 25] },
-  { n: 6, minSize: 2, tier: 1, score: [15, 70] },
-  { n: 7, minSize: 2, tier: 1, score: [35, 90] },
-  { n: 7, minSize: 2, tier: 2, score: [60, 160] },
-  { n: 8, minSize: 2, tier: 2, score: [60, 160] },
-  { n: 8, minSize: 2, tier: 3, score: [90, 400] },
-];
 
 const pad = (v) => String(v).padStart(2, '0');
 
@@ -38,58 +29,40 @@ export function addDays(key, days) {
   return dateKey(d);
 }
 
+const daysBetween = (a, b) => Math.round((parseKey(b) - parseKey(a)) / 86400000);
+
+/** Rätsel aus der Tabelle oder null. */
+export function tableDaily(key) {
+  const i = daysBetween(DAILY_TABLE_START, key);
+  if (i < 0 || i >= DAILY_TABLE.length) return null;
+  const level = decodeDaily(key, DAILY_TABLE[i]);
+  level.tier = tierFor(level);
+  return level;
+}
+
+/** Größe, Stufe und Wochentag eines Tages (für die Tageskarte). */
 export function planFor(key) {
   const day = parseKey(key).getDay();
-  return { ...DAILY_PLAN[day], weekday: WEEKDAYS[day] };
+  const t = tableDaily(key);
+  const target = DAILY_TARGETS[day];
+  const n = t ? t.n : target.n;
+  return { n, tier: t ? t.tier : tierFor({ n, score: target.target, maxTech: target.minTech }), weekday: WEEKDAYS[day] };
 }
 
 export function formatDate(key) {
   return parseKey(key).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-function hashString(s) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
 /**
- * Erzeugt das Rätsel eines Tages. `pause` wird zwischen den Versuchen aufgerufen,
- * damit der Browser zwischendurch zeichnen kann.
+ * Rätsel eines Tages: aus der Tabelle, sonst live erzeugt. `live` ersetzt den Generator
+ * (im Browser: Web Worker); `pause` lässt den Browser zwischendurch zeichnen.
  */
-export async function generateDaily(key, pause = null) {
-  const plan = planFor(key);
-  const rng = mulberry32(hashString(`katzen-sudoku-${key}`));
-  const [lo, hi] = plan.score;
-  const maxCands = plan.n >= 9 ? 4 : 12;
-  const cands = [];
-  let p = null;
-  for (let tries = 0; !p && cands.length < maxCands && tries < 400; tries++) {
-    const c = generateOne(plan.n, rng, plan.minSize);
-    if (c) {
-      cands.push(c);
-      if (c.grade.score >= lo && c.grade.score <= hi) p = c;
-    }
-    if (pause) await pause();
-  }
-  if (!p) {
-    // keiner im Zielbereich: den nächstgelegenen nehmen
-    const dist = (c) => (c.grade.score < lo ? lo - c.grade.score : c.grade.score - hi);
-    p = cands.sort((a, b) => dist(a) - dist(b))[0];
-  }
-  return {
-    id: key,
-    n: p.n,
-    regions: p.regions.map((k) => k.toString(36)).join(''),
-    colors: assignColors(p.n, p.regions, rng),
-    solution: p.solution,
-    score: p.grade.score,
-    maxTech: p.grade.maxTech,
-    tier: plan.tier,
-  };
+export async function generateDaily(key, pause = null, live = null) {
+  const t = tableDaily(key);
+  if (t) return t;
+  const level = live ? await live(key) : await generateDailyV3(key, pause);
+  level.tier = tierFor(level);
+  return level;
 }
 
 /** Aktuelle Serie: Tage in Folge bis heute (oder bis gestern, wenn heute noch offen ist). */

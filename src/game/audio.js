@@ -111,9 +111,6 @@ export const sfx = {
     tone({ f1: 1320, dur: 0.16, gain: 0.06, delay: 0.08 });
     tone({ f1: 1760, dur: 0.2, gain: 0.04, delay: 0.16 });
   },
-  mouse: () => {
-    for (let i = 0; i < 4; i++) tone({ f1: 1500 + i * 120, f2: 1800 + i * 120, dur: 0.05, gain: 0.04, delay: i * 0.05 });
-  },
   pop: () => tone({ f1: vary(900), f2: 1300, dur: 0.06, type: 'sine', gain: 0.05 }),
   star: (k) => {
     const f = [1047, 1319, 1568][k] || 1568;

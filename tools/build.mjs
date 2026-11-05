@@ -25,8 +25,21 @@ function replaceOnce(text, needle, replacement, what) {
   return text.replace(needle, () => replacement);
 }
 
+// „inline-worker:pfad“ → der Worker wird eigens gebündelt und als Text eingebettet
+const inlineWorker = {
+  name: 'inline-worker',
+  setup(b) {
+    b.onResolve({ filter: /^inline-worker:/ }, (a) => ({ path: join(a.resolveDir, a.path.slice('inline-worker:'.length)), namespace: 'inline-worker' }));
+    b.onLoad({ filter: /.*/, namespace: 'inline-worker' }, async (a) => {
+      const r = await build({ entryPoints: [a.path], bundle: true, write: false, format: 'iife', minify: true, target: ['es2020'], legalComments: 'none' });
+      return { contents: r.outputFiles[0].text, loader: 'text' };
+    });
+  },
+};
+
 await build({
   entryPoints: [join(root, 'src', 'main.js')],
+  plugins: [inlineWorker],
   bundle: true,
   format: 'iife',
   minify: true,

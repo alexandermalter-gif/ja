@@ -175,6 +175,16 @@ check(await page.locator('.archive-day').count() === 30, 'Archiv zeigt 30 Tage')
 await page.keyboard.press('Escape');
 await shot('05-menu');
 
+// 10. Freies Spiel (Erzeugung im Web Worker)
+await page.click('#btn-free');
+await page.click('#free-n .seg-btn >> text="6×6"');
+await page.click('.modal .btn-primary', { force: true });
+await page.waitForSelector('#screen-game:not(.hidden)', { timeout: 60000 });
+await wait(800);
+check((await page.textContent('#hud-level-label')) === 'Frei' && (await page.textContent('#hud-level')) === '6×6', 'Freies Spiel startet (6×6)');
+await page.click('#btn-back');
+await wait(400);
+
 check(errors.length === 0, `keine Fehler in der Konsole${errors.length ? `:\n  ${errors.join('\n  ')}` : ''}`);
 await browser.close();
 if (failed) {

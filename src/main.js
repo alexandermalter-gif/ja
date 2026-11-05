@@ -10,7 +10,7 @@ import {
 } from './game/storage.js';
 import { sfx, setSoundEnabled, suspendAudio } from './game/audio.js';
 import {
-  dateKey, addDays, generateDaily, planFor, formatDate, streakInfo, bestStreak, weekView, DAILY_CACHE_VERSION,
+  dateKey, addDays, generateDaily, tableDaily, planFor, formatDate, streakInfo, bestStreak, weekView, DAILY_CACHE_VERSION,
 } from './game/daily.js';
 import {
   SKINS, skinById, isSkinUnlocked, unlockText, unlockProgress, catFaceSvg, nextMilestone,
@@ -23,7 +23,8 @@ import { TIERS, starsFor, pointsFor, tierFor } from './game/scoring.js';
 import { Session, puzzleSig, isX } from './game/session.js';
 import * as T from './game/timing.js';
 import { TRICKS, trickFor, trickHtml } from './game/tricks.js';
-import { FREE_SIZES, generateFree } from './game/freeplay.js';
+import { FREE_SIZES } from './game/freeplay.js';
+import { generateFreeAsync, generateDailyAsync } from './game/workerClient.js';
 import {
   $, announce, toast, hideToast, retrigger, animateNumber, fitText, esc, openModal, closeModal, modalOpen,
   setModalHooks, handleModalKey, usingKeyboard, focusQuiet,
@@ -550,6 +551,7 @@ function showMenu() {
   board?.pause();
   renderMenu(true);
   window.scrollTo({ top: 0 });
+  pregenerate();
 }
 
 // --- Katzen-Sammlung ------------------------------------------------------------
@@ -773,8 +775,10 @@ function startLevel(id, opts = {}) {
   startPuzzle({ key: `L${id}`, kind: 'level', level: LEVELS[id - 1] }, opts);
 }
 
-/** Tagesrätsel holen: aus dem Zwischenspeicher oder neu erzeugen (mit Ladeanzeige). */
+/** Tagesrätsel holen: aus der Tabelle, dem Zwischenspeicher oder neu erzeugt (mit Ladeanzeige). */
 async function loadDaily(key) {
+  const t = tableDaily(key);
+  if (t) return t;
   if (dailyMem.has(key)) return dailyMem.get(key);
   const c = data.daily.cache;
   if (c?.key === key && c.v === DAILY_CACHE_VERSION && c.level) {
@@ -784,23 +788,50 @@ async function loadDaily(key) {
   const loader = $('#loader');
   loader.classList.remove('hidden');
   try {
-    const pause = () => new Promise((r) => setTimeout(r, 0));
-    await pause();
-    await new Promise((r) => requestAnimationFrame(() => r()));
-    const level = await generateDaily(key, pause);
-    dailyMem.set(key, level);
-    if (key === today()) {
-      data.daily.cache = { key, level, v: DAILY_CACHE_VERSION };
-      persist();
-    }
+    const level = await (pregen.get(key) || generateDaily(key, null, generateDailyAsync));
+    rememberDaily(key, level);
     return level;
   } catch (err) {
     console.error(err);
     toast('Das Tagesrätsel konnte nicht erstellt werden. Versuch es gleich noch einmal.');
     return null;
   } finally {
+    pregen.delete(key);
     loader.classList.add('hidden');
   }
+}
+
+function rememberDaily(key, level) {
+  dailyMem.set(key, level);
+  if (key === today()) {
+    data.daily.cache = { key, level, v: DAILY_CACHE_VERSION };
+    persist();
+  }
+}
+
+// Im Leerlauf vorbereiten: heutiges Tagesrätsel (falls nicht in der Tabelle) und das nächste freie Rätsel
+const pregen = new Map();
+let freeNext = null;
+function idle(fn) {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 4000 });
+  else setTimeout(fn, 1500);
+}
+function pregenerate() {
+  idle(() => {
+    const key = today();
+    if (!tableDaily(key) && !dailyMem.has(key) && !(data.daily.cache?.key === key && data.daily.cache.v === DAILY_CACHE_VERSION) && !pregen.has(key)) {
+      const p = generateDaily(key, null, generateDailyAsync);
+      pregen.set(key, p);
+      p.then((level) => { rememberDaily(key, level); pregen.delete(key); }, () => pregen.delete(key));
+    }
+    const n = Number(sessionStorageGet('free-n')) || 7;
+    const t = Number(sessionStorageGet('free-t')) || 1;
+    if (!freeNext || freeNext.n !== n || freeNext.t !== t) {
+      const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      freeNext = { n, t, promise: generateFreeAsync(n, t, seed) };
+      freeNext.promise.catch(() => { freeNext = null; });
+    }
+  });
 }
 
 async function startDaily({ fresh = false } = {}) {
@@ -821,10 +852,15 @@ async function startFree(n, tier) {
   const loader = $('#loader');
   loader.classList.remove('hidden');
   try {
-    const pause = () => new Promise((r) => setTimeout(r, 0));
-    await pause();
-    const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
-    const level = await generateFree(n, tier, seed, pause);
+    let promise;
+    if (freeNext && freeNext.n === n && freeNext.t === tier) {
+      promise = freeNext.promise;
+      freeNext = null;
+    } else {
+      const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      promise = generateFreeAsync(n, tier, seed);
+    }
+    const level = await promise;
     startPuzzle({ key: 'F', kind: 'free', level }, { fresh: true });
   } catch (err) {
     console.error(err);
@@ -971,7 +1007,6 @@ function maybeShowTrick(level) {
   if (!level.maxTech || level.maxTech < 4) return;
   const t = trickFor(level.maxTech);
   if (!t || data.techniquesSeen.includes(t.tech)) return;
-  // Bei Leveln gilt der Trick erst, wenn alle leichteren schon dran waren
   data.techniquesSeen.push(t.tech);
   persist();
   game.sched.after(700, () => {
@@ -2176,6 +2211,7 @@ document.documentElement.classList.toggle('calm', data.settings.calm);
 buildStaticUi();
 renderMenu(true);
 scheduleMidnight();
+pregenerate();
 if (loaded.recovered) toast('Dein Spielstand war beschädigt. Er wurde gesichert und neu angelegt.');
 if (!canSave) toast('Speichern ist hier nicht möglich – dein Fortschritt geht beim Schließen verloren.');
 if (!data.tutorialSeen && webglOk) {

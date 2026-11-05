@@ -1,4 +1,4 @@
-// Rätsel-Generator: wird vom Level-Skript (Node) und im Browser (Tägliches Rätsel) genutzt.
+// Rätsel-Generator: wird von den Skripten (Level, Tagesrätsel) und im Browser (Freies Spiel) genutzt.
 import { makeGeometry, countSolutions, gradePuzzle } from './solver.js';
 import { PALETTE, PAIR_DIST, DARKNESS } from './palette.js';
 
@@ -233,16 +233,21 @@ export function minAdjacentDistance(n, regions, colors) {
   return min;
 }
 
-export function generateOne(n, rng, minSize) {
+/**
+ * Erzeugt ein Rätsel. opts.maxRegionShare: größte Farbfläche höchstens dieser Anteil des Bretts
+ * (sonst null – geprüft vor der teuren Bewertung).
+ */
+export function generateOne(n, rng, minSize, opts = {}) {
   const perm = randomCats(n, rng);
   const catCells = perm.map((c, r) => r * n + c);
   const regions = growRegions(n, catCells, rng, minSize);
   if (!regions) return null;
+  const sizes = new Array(n).fill(0);
+  for (const k of regions) sizes[k]++;
+  if (opts.maxRegionShare && Math.max(...sizes) > opts.maxRegionShare * n * n) return null;
   const geo = makeGeometry(n, regions);
   const grade = gradePuzzle(geo);
   if (!grade.solved) return null;
-  const sizes = new Array(n).fill(0);
-  for (const k of regions) sizes[k]++;
   return { n, regions: Array.from(regions), solution: perm, grade, minRegion: Math.min(...sizes) };
 }
 
