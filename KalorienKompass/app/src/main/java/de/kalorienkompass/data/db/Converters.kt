@@ -1,0 +1,41 @@
+package de.kalorienkompass.data.db
+
+import androidx.room.TypeConverter
+import de.kalorienkompass.data.model.FoodPortion
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import java.time.LocalDate
+
+/**
+ * Room type converters. Enums use Room's built-in enum support (stored by name).
+ * Converters are non-null on purpose; Room adds the null handling for nullable columns.
+ */
+class Converters {
+
+    @TypeConverter
+    fun localDateToEpochDay(date: LocalDate): Long = date.toEpochDay()
+
+    @TypeConverter
+    fun epochDayToLocalDate(epochDay: Long): LocalDate = LocalDate.ofEpochDay(epochDay)
+
+    @TypeConverter
+    fun portionsToJson(portions: List<FoodPortion>): String =
+        json.encodeToString(portionListSerializer, portions)
+
+    @TypeConverter
+    fun jsonToPortions(value: String): List<FoodPortion> =
+        if (value.isBlank()) {
+            emptyList()
+        } else {
+            try {
+                json.decodeFromString(portionListSerializer, value)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+    private companion object {
+        val json = Json { ignoreUnknownKeys = true }
+        val portionListSerializer = ListSerializer(FoodPortion.serializer())
+    }
+}
