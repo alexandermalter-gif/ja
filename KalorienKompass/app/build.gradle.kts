@@ -78,6 +78,16 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric UI smoke tests need the merged Android resources and manifest.
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { test ->
+            test.maxHeapSize = "3g"
+            // Optional mirror for Robolectric's android-all download (e.g. when Maven Central rate-limits):
+            // ./gradlew test -ProbolectricRepoUrl=https://maven-central.storage-download.googleapis.com/maven2
+            providers.gradleProperty("robolectricRepoUrl").orNull?.let {
+                test.systemProperty("robolectric.dependency.repo.url", it)
+            }
+        }
     }
 
     lint {
@@ -139,4 +149,11 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
