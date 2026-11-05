@@ -36,7 +36,7 @@ internal fun formatNutrient(value: Double?): String = when {
 internal data class AmountUnitOption(
     /** "base" or "portion:<index>" */
     val key: String,
-    /** dropdown label, e.g. "g", "Scheibe (50 g)" */
+    /** dropdown label, e.g. "Gramm (g)", "Scheibe (50 g)" */
     val label: String,
     /** grams (or ml) per 1 unit; 1.0 for the base unit */
     val gramsPerUnit: Double,
@@ -71,7 +71,7 @@ internal fun portionLabel(portion: FoodPortion, unit: String): String {
 internal fun amountUnitOptions(food: FoodEntity): List<AmountUnitOption> {
     val base = AmountUnitOption(
         key = BASE_UNIT_KEY,
-        label = food.unitSymbol,
+        label = if (food.unitSymbol == "ml") "Milliliter (ml)" else "Gramm (g)",
         gramsPerUnit = 1.0,
         diaryLabel = food.unitSymbol,
         isBase = true,
@@ -292,6 +292,59 @@ internal fun FoodEntity.toForm(): CustomFoodForm = CustomFoodForm(
     salt = salt?.let { formatInput(it, maxDecimals = 3) }.orEmpty(),
     portions = portions.map { PortionInput(it.name, formatInput(it.grams, maxDecimals = 1)) },
 )
+
+/**
+ * Form with values found elsewhere (photo of the nutrition table, web research; per 100 g/ml).
+ * Only non-null (and valid) values replace the current input. A serving becomes the first portion.
+ */
+internal fun CustomFoodForm.withPrefill(
+    name: String? = null,
+    brand: String? = null,
+    unit: String? = null,
+    kcal: Double? = null,
+    fat: Double? = null,
+    carbs: Double? = null,
+    sugar: Double? = null,
+    fiber: Double? = null,
+    protein: Double? = null,
+    salt: Double? = null,
+    servingName: String? = null,
+    servingGrams: Double? = null,
+): CustomFoodForm {
+    fun num(value: Double?, decimals: Int): String? =
+        value?.takeIf { !it.isNaN() && !it.isInfinite() && it >= 0.0 }?.let { formatInput(it, maxDecimals = decimals) }
+
+    return copy(
+        name = name?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_NAME_LENGTH) ?: this.name,
+        brand = brand?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_NAME_LENGTH) ?: this.brand,
+        unit = normalizeUnit(unit) ?: this.unit,
+        kcal = num(kcal, 1) ?: this.kcal,
+        fat = num(fat, 2) ?: this.fat,
+        carbs = num(carbs, 2) ?: this.carbs,
+        sugar = num(sugar, 2) ?: this.sugar,
+        fiber = num(fiber, 2) ?: this.fiber,
+        protein = num(protein, 2) ?: this.protein,
+        salt = num(salt, 3) ?: this.salt,
+        portions = prefilledPortions(portions, servingName, servingGrams),
+    )
+}
+
+private fun prefilledPortions(current: List<PortionInput>, servingName: String?, servingGrams: Double?): List<PortionInput> {
+    val grams = servingGrams?.takeIf { !it.isNaN() && !it.isInfinite() && it > 0.0 && it <= 10_000.0 }
+    val name = servingName?.trim()?.takeIf { it.isNotEmpty() }?.take(60)
+    val filled = current.filter { it.name.isNotBlank() || it.grams.isNotBlank() }
+    if (grams == null) {
+        // name only: rename the first portion (or start one)
+        val portionName = name ?: return current
+        return if (filled.isEmpty()) {
+            listOf(PortionInput(name = portionName))
+        } else {
+            listOf(filled.first().copy(name = portionName)) + filled.drop(1)
+        }
+    }
+    val portion = PortionInput(name = name ?: "Portion", grams = formatInput(grams, maxDecimals = 1))
+    return listOf(portion) + filled.filterNot { parseDecimal(it.grams) == grams }
+}
 
 /** "g"/"ml" from free text ("ml", "Milliliter", "l" → "ml"; everything else → "g"), null if blank. */
 internal fun normalizeUnit(unit: String?): String? {

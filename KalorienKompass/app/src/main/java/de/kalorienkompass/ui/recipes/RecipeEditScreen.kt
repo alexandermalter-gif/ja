@@ -73,7 +73,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import de.kalorienkompass.data.model.MealType
-import de.kalorienkompass.di.appContainerFrom
 import de.kalorienkompass.ui.components.AppCard
 import de.kalorienkompass.ui.components.ConfirmDialog
 import de.kalorienkompass.ui.components.EmptyState
@@ -97,13 +96,14 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RecipeEditScreen(navController: NavController, recipeId: Long?) {
+    val dependencies = LocalRecipeDependencies.current
     val vm: RecipeEditViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                val container = appContainerFrom(this)
+                val deps = recipeDependencies(dependencies)
                 RecipeEditViewModel(
-                    recipeRepository = container.recipeRepository,
-                    foodRepository = container.foodRepository,
+                    recipeRepository = deps.recipes,
+                    foodRepository = deps.foods,
                     savedState = createSavedStateHandle(),
                     recipeId = recipeId,
                 )

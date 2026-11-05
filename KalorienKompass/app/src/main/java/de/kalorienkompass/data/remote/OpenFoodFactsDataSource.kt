@@ -1,6 +1,7 @@
 package de.kalorienkompass.data.remote
 
 import de.kalorienkompass.data.db.FoodEntity
+import de.kalorienkompass.data.remote.off.OffApiException
 import de.kalorienkompass.data.remote.off.OffParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -26,7 +27,8 @@ import kotlin.coroutines.resumeWithException
  *   (`cc=de`) are searched first; if a query has no German result at all, the worldwide database is used.
  *
  * All parsing is done by the pure [OffParser]. Network calls are cancellable (a cancelled coroutine
- * cancels the HTTP call); I/O problems are reported as [IOException] with a German message.
+ * cancels the HTTP call). Connection problems are thrown as [IOException]; HTTP errors and invalid
+ * responses as [OffApiException] (an IOException with a German, user-facing message).
  */
 class OpenFoodFactsDataSource(
     client: OkHttpClient,
@@ -106,11 +108,11 @@ class OpenFoodFactsDataSource(
             block()
         } catch (e: IllegalArgumentException) {
             // includes kotlinx.serialization.SerializationException (e.g. an HTML error page instead of JSON)
-            throw IOException("Open Food Facts hat eine ungültige Antwort geliefert. Bitte versuche es später erneut.", e)
+            throw OffApiException("Open Food Facts hat eine ungültige Antwort geliefert. Bitte versuche es später erneut.", e)
         }
     }
 
-    private fun httpError(code: Int): IOException = IOException(
+    private fun httpError(code: Int): IOException = OffApiException(
         when (code) {
             429 -> "Zu viele Anfragen an Open Food Facts. Bitte warte einen Moment und versuche es dann erneut."
             in 500..599 -> "Open Food Facts ist gerade überlastet oder nicht erreichbar (HTTP $code). Bitte versuche es später erneut."

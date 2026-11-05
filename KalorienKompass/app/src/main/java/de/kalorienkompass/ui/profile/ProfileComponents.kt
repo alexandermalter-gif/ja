@@ -51,6 +51,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavController
 import de.kalorienkompass.backup.BackupSummary
 import de.kalorienkompass.ui.components.AppCard
+import de.kalorienkompass.ui.components.isAcceptableDecimalInput
 import de.kalorienkompass.util.formatDateTime
 import de.kalorienkompass.util.formatSteps
 
@@ -504,6 +505,45 @@ internal fun IntegerTextField(
     )
 }
 
+/** Decimal number field ("82,5") with error state and supporting text. */
+@Composable
+internal fun DecimalInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    suffix: String? = null,
+    isError: Boolean = false,
+    supportingText: String? = null,
+    imeAction: ImeAction = ImeAction.Next,
+    onImeAction: () -> Unit = {},
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input ->
+            if (isAcceptableDecimalInput(input)) onValueChange(input)
+        },
+        label = { Text(label) },
+        suffix = suffix?.let { { Text(it) } },
+        isError = isError,
+        supportingText = supportingText?.let { { Text(it) } },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                onImeAction()
+                defaultKeyboardAction(ImeAction.Done)
+            },
+            onNext = {
+                onImeAction()
+                defaultKeyboardAction(ImeAction.Next)
+            },
+        ),
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier,
+    )
+}
+
 /** Field error/hint line below custom inputs. */
 @Composable
 internal fun FieldMessage(text: String, isError: Boolean, modifier: Modifier = Modifier) {
@@ -519,16 +559,17 @@ internal fun FieldMessage(text: String, isError: Boolean, modifier: Modifier = M
 internal fun backupContentText(summary: BackupSummary): String = buildString {
     summary.exportedAtMillis?.let { append("Erstellt am ").append(formatDateTime(it)).append('\n') }
     val parts = listOf(
-        count(summary.diaryEntries, "Tagebucheintrag", "Tagebucheinträge"),
-        count(summary.measurements, "Körperwert", "Körperwerte"),
-        count(summary.activityDays, "Tag mit Schritten", "Tage mit Schritten"),
-        count(summary.recipes, "Rezept", "Rezepte"),
-        count(summary.foods, "eigenes/gespeichertes Lebensmittel", "eigene/gespeicherte Lebensmittel"),
+        countLabel(summary.diaryEntries, "Tagebucheintrag", "Tagebucheinträge"),
+        countLabel(summary.measurements, "Körperwert", "Körperwerte"),
+        countLabel(summary.activityDays, "Tag mit Schritten", "Tage mit Schritten"),
+        countLabel(summary.recipes, "Rezept", "Rezepte"),
+        countLabel(summary.foods, "eigenes/gespeichertes Lebensmittel", "eigene/gespeicherte Lebensmittel"),
     )
     append(parts.joinToString("\n") { "• $it" })
 }
 
-private fun count(n: Int, singular: String, plural: String): String =
+/** "1 Rezept", "3 Rezepte", "1.234 Tagebucheinträge" */
+internal fun countLabel(n: Int, singular: String, plural: String): String =
     "${formatSteps(n.toLong())} ${if (n == 1) singular else plural}"
 
 /** Confirmation before an import replaces all data. */
