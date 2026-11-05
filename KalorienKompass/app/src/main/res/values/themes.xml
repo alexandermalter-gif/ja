@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The UI is drawn with Jetpack Compose (KalorienTheme). This window theme only
+         provides a dark background so that app start does not flash white. -->
+    <style name="Theme.KalorienKompass" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kk_background</item>
+        <item name="android:colorBackground">@color/kk_background</item>
+        <item name="android:colorAccent">@color/kk_mint</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
