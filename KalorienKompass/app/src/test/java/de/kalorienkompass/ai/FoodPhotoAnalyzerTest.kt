@@ -71,6 +71,14 @@ class FoodPhotoAnalyzerTest {
 
     private fun RecordedRequest.jsonBody(): JsonObject = Json.parseToJsonElement(body.readUtf8()).jsonObject
 
+    /**
+     * The user's key as it went over the wire. anthropic-java 3.x puts the key given to
+     * `AnthropicOkHttpClient.builder().apiKey(..)` into `Authorization: Bearer <key>` (2.x used `x-api-key`);
+     * either way it must be exactly the configured key.
+     */
+    private fun RecordedRequest.sentApiKey(): String? =
+        getHeader("x-api-key") ?: getHeader("Authorization")?.removePrefix("Bearer ")
+
     private fun RecordedRequest.betaHeader(): String = headers.values("anthropic-beta").joinToString(",")
 
     private fun JsonObject.str(key: String): String = getValue(key).jsonPrimitive.content
@@ -86,7 +94,7 @@ class FoodPhotoAnalyzerTest {
         val request = takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/v1/messages", request.requestUrl!!.encodedPath)
-        assertEquals(API_KEY, request.getHeader("x-api-key"))
+        assertEquals(API_KEY, request.sentApiKey())
         assertTrue(request.betaHeader().contains(FoodPhotoRequests.FALLBACK_BETA))
 
         val body = request.jsonBody()

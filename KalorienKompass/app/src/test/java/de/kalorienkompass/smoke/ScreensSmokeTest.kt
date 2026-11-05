@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import de.kalorienkompass.data.model.MealType
 import de.kalorienkompass.data.model.MeasurementType
 import de.kalorienkompass.data.model.ThemeMode
+import de.kalorienkompass.testing.DialogLayoutFlushRule
 import de.kalorienkompass.ui.navigation.AppNavHost
 import de.kalorienkompass.ui.navigation.Routes
 import de.kalorienkompass.ui.theme.KalorienTheme
@@ -70,6 +71,9 @@ import org.robolectric.annotation.GraphicsMode
  * - compose-ui-test runs `rememberCoroutineScope`/`LaunchedEffect` coroutines on an unconfined test
  *   dispatcher, i.e. after `withContext(IO)`/DataStore/Room they would continue on a background thread
  *   (unlike on a device). [withEffectsResumingOnMainThread] restores device behaviour.
+ * - Robolectric never draws dialog windows, so a dialog with a text field would keep a Compose layout pass
+ *   pending forever (`AppNotIdleException` after 60 s); [DialogLayoutFlushRule] runs that pass like a device's
+ *   draw would.
  * - Robolectric does not run androidx.startup, so WorkManager is not initialized while `KalorienApp.onCreate`
  *   schedules the health sync (the app catches this; noted in the report). Each test then installs a test
  *   WorkManager; [AppFlowSmokeTest] checks `HealthWorkScheduler.schedule()` against it.
@@ -86,7 +90,11 @@ class ScreensSmokeTest {
     @get:Rule(order = 0)
     val guard = SmokeGuardRule()
 
+    /** Dialogs with a text field (e.g. Progress → "Eintrag") would never idle otherwise, see the rule. */
     @get:Rule(order = 1)
+    val dialogLayout = DialogLayoutFlushRule()
+
+    @get:Rule(order = 2)
     val composeRule = createAndroidComposeRule<ComponentActivity>().withEffectsResumingOnMainThread()
 
     private lateinit var data: TestData.Seeded

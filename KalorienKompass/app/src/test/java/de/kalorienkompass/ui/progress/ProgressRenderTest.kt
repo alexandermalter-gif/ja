@@ -2,6 +2,9 @@ package de.kalorienkompass.ui.progress
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +20,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.layout.LayoutInfo
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -48,6 +54,7 @@ import de.kalorienkompass.data.settings.AppSettings
 import de.kalorienkompass.data.settings.NutritionGoalSettings
 import de.kalorienkompass.data.settings.UserProfile
 import de.kalorienkompass.domain.DailyTargets
+import de.kalorienkompass.testing.DialogLayoutFlushRule
 import de.kalorienkompass.ui.components.charts.BarChart
 import de.kalorienkompass.ui.components.charts.ChartBar
 import de.kalorienkompass.ui.components.charts.ChartPoint
@@ -70,13 +77,21 @@ import kotlin.math.abs
 /**
  * Renders the charts, the progress cards, the history list and the measurement dialog with
  * Robolectric (native graphics). Set the environment variable KK_PREVIEW_DIR to also write PNGs.
+ *
+ * Images are taken with [capture] (software `View.draw` of the node's window), not `captureToImage()`:
+ * under Robolectric's paused looper compose-ui-test 1.7's `captureToImage()` posts a redraw to the main
+ * looper and then blocks that thread waiting for it (ComposeTimeoutException after 2 s), see
+ * `smoke/SmokeSupport.kt` → `Screenshots`. [DialogLayoutFlushRule] lets the dialogs with text fields idle.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w411dp-h891dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProgressRenderTest {
 
-    @get:Rule
+    @get:Rule(order = 0)
+    val dialogLayout = DialogLayoutFlushRule()
+
+    @get:Rule(order = 1)
     val compose = createComposeRule()
 
     private val today = LocalDate.now()
@@ -101,24 +116,24 @@ class ProgressRenderTest {
                 }
             }
         }
-        compose.onNodeWithTag("line").captureToImage().save("line_empty")
+        compose.onNodeWithTag("line").capture().save("line_empty")
 
         compose.runOnIdle { points = listOf(ChartPoint(today, 83.4)) }
         compose.onNodeWithTag("line").performTouchInput { click(center) }
-        compose.onNodeWithTag("line").captureToImage().save("line_single")
+        compose.onNodeWithTag("line").capture().save("line_single")
 
         compose.runOnIdle {
             points = (0 until 90).map { i ->
                 ChartPoint(today.minusDays(89L - i), 86.0 - i * 0.05 + listOf(0.0, 0.25, -0.15)[i % 3])
             }
         }
-        val many = compose.onNodeWithTag("line").captureToImage()
+        val many = compose.onNodeWithTag("line").capture()
         many.save("line_many")
         assertTrue("line is drawn in the primary color", many.pixelsNear(mint) > 100)
 
         compose.onNodeWithTag("line").performTouchInput { swipeRight() }
         compose.onNodeWithTag("line").performTouchInput { click(centerLeft) }
-        compose.onNodeWithTag("line").captureToImage().save("line_tooltip")
+        compose.onNodeWithTag("line").capture().save("line_tooltip")
     }
 
     @Test
@@ -140,13 +155,13 @@ class ProgressRenderTest {
                 }
             }
         }
-        compose.onNodeWithTag("bars").captureToImage().save("bars_empty")
+        compose.onNodeWithTag("bars").capture().save("bars_empty")
 
         compose.runOnIdle {
             bars = listOf(1800.0, 2450.0, 0.0, 1950.0, 2100.0, 1500.0, 900.0)
                 .mapIndexed { i, v -> ChartBar(today.minusDays(6L - i), v) }
         }
-        val week = compose.onNodeWithTag("bars").captureToImage()
+        val week = compose.onNodeWithTag("bars").capture()
         week.save("bars_week")
         assertTrue("normal bars", week.pixelsNear(AppColors.kcal) > 200)
         assertTrue("bars over the goal", week.pixelsNear(AppColors.over) > 100)
@@ -154,7 +169,7 @@ class ProgressRenderTest {
         val tooltipColor = Color(0xFFE8EAED) // inverseSurface (dark)
         val before = week.pixelsNear(tooltipColor)
         compose.onNodeWithTag("bars").performTouchInput { click(center) }
-        val withTooltip = compose.onNodeWithTag("bars").captureToImage()
+        val withTooltip = compose.onNodeWithTag("bars").capture()
         withTooltip.save("bars_tooltip")
         assertTrue("tooltip box appears", withTooltip.pixelsNear(tooltipColor) > before + 200)
 
@@ -162,7 +177,7 @@ class ProgressRenderTest {
             bars = (0 until 53).map { i -> ChartBar(today.minusWeeks(52L - i), 1500.0 + (i % 9) * 120.0) }
         }
         compose.onNodeWithTag("bars").performTouchInput { swipeLeft() }
-        compose.onNodeWithTag("bars").captureToImage().save("bars_year")
+        compose.onNodeWithTag("bars").capture().save("bars_year")
     }
 
     @Test
@@ -175,9 +190,9 @@ class ProgressRenderTest {
                 }
             }
         }
-        compose.onNodeWithTag("spark").captureToImage()
+        compose.onNodeWithTag("spark").capture()
         compose.runOnIdle { points = (0 until 10).map { ChartPoint(today.minusDays(9L - it), 92.0 - it * 0.3) } }
-        assertTrue(compose.onNodeWithTag("spark").captureToImage().pixelsNear(mint) > 20)
+        assertTrue(compose.onNodeWithTag("spark").capture().pixelsNear(mint) > 20)
     }
 
     @Test
@@ -208,7 +223,7 @@ class ProgressRenderTest {
         }
         listOf("Gewicht", "Kalorien", "Makronährstoffe", "Schritte", "Körpermaße", "Bauchumfang", "Körperfett")
             .forEach { compose.onNodeWithText(it).assertExists() }
-        compose.onRoot().captureToImage().save("progress_full")
+        compose.onRoot().capture().save("progress_full")
     }
 
     @Test
@@ -245,7 +260,7 @@ class ProgressRenderTest {
         }
         listOf("Gewicht eintragen", "Zum Tagebuch", "Health Connect verbinden", "Körpermaß hinzufügen")
             .forEach { compose.onNodeWithText(it).assertExists() }
-        compose.onRoot().captureToImage().save("progress_empty")
+        compose.onRoot().capture().save("progress_empty")
     }
 
     @Test
@@ -275,7 +290,7 @@ class ProgressRenderTest {
         }
         compose.onNodeWithText("Heute").assertExists()
         compose.onNodeWithText(monthTitle(content.months.first().month)).assertExists()
-        compose.onRoot().captureToImage().save("history")
+        compose.onRoot().capture().save("history")
     }
 
     @Test
@@ -298,7 +313,7 @@ class ProgressRenderTest {
             }
         }
         compose.onNode(hasSetTextAction()).assertTextContains("83,4")
-        compose.onNode(isDialog()).captureToImage().save("dialog_add")
+        compose.onNode(isDialog()).capture().save("dialog_add")
 
         compose.onNodeWithText("Bauchumfang").performClick()
         compose.onNode(hasSetTextAction()).assertTextContains("92")
@@ -342,7 +357,7 @@ class ProgressRenderTest {
         compose.onNodeWithText("Schließen").assertExists()
         compose.onNodeWithText("Speichern").assertDoesNotExist()
         compose.onNodeWithText("Dieser Wert wurde aus Health Connect übernommen.").assertExists()
-        compose.onNode(isDialog()).captureToImage().save("dialog_readonly")
+        compose.onNode(isDialog()).capture().save("dialog_readonly")
         compose.onNode(hasContentDescription("Eintrag löschen")).performClick()
         compose.runOnIdle { assertTrue(deleted) }
     }
@@ -406,6 +421,44 @@ class ProgressRenderTest {
             goals = NutritionGoalSettings(),
             targets = DailyTargets(2100, 263, 105, 70, emptyMap()),
         )
+    }
+
+    /**
+     * Image of this node: its window (activity or dialog) drawn in software by Robolectric's native
+     * graphics, cropped to the node's bounds.
+     */
+    private fun SemanticsNodeInteraction.capture(): ImageBitmap {
+        compose.waitForIdle()
+        val node = fetchSemanticsNode()
+        val nodeRoot = node.layoutInfo.topmost()
+        val window = windowRoots().firstOrNull { window ->
+            composeRoots(window).any { it.semanticsOwner.unmergedRootSemanticsNode.layoutInfo.topmost() === nodeRoot }
+        } ?: throw AssertionError("No window shows the node $node")
+        val bitmap = Bitmap.createBitmap(window.width, window.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread { window.draw(Canvas(bitmap)) }
+        val bounds = node.boundsInWindow
+        val left = bounds.left.toInt().coerceIn(0, window.width - 1)
+        val top = bounds.top.toInt().coerceIn(0, window.height - 1)
+        val right = bounds.right.toInt().coerceIn(left + 1, window.width)
+        val bottom = bounds.bottom.toInt().coerceIn(top + 1, window.height)
+        return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top).asImageBitmap()
+    }
+
+    private fun LayoutInfo.topmost(): LayoutInfo = generateSequence(this) { it.parentInfo }.last()
+
+    /** Root views of all app windows (WindowManagerGlobal), like `Screenshots` in the smoke tests. */
+    private fun windowRoots(): List<View> {
+        val globalClass = Class.forName("android.view.WindowManagerGlobal")
+        val global = globalClass.getMethod("getInstance").invoke(null)
+        @Suppress("UNCHECKED_CAST")
+        val views = globalClass.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<View>
+        return views.filter { it.isAttachedToWindow && it.width > 0 && it.height > 0 }
+    }
+
+    private fun composeRoots(view: View): List<ViewRootForTest> = when (view) {
+        is ViewRootForTest -> listOf(view)
+        is ViewGroup -> (0 until view.childCount).flatMap { composeRoots(view.getChildAt(it)) }
+        else -> emptyList()
     }
 
     private fun ImageBitmap.pixelsNear(color: Color, tolerance: Float = 0.06f): Int {
