@@ -31,13 +31,13 @@ fun MacroProgress(
     modifier: Modifier = Modifier,
     unit: String = "g",
 ) {
-    val target = if (goal > 0.0) (current / goal).toFloat().coerceIn(0f, 1f) else 0f
+    val target = macroProgressFraction(current, goal)
     val progress by animateFloatAsState(
         targetValue = target,
         animationSpec = tween(durationMillis = 600),
         label = "macroProgress",
     )
-    val over = goal > 0.0 && current > goal * 1.05
+    val over = isOverGoal(current, goal)
     val barColor = if (over) AppColors.over else color
     val shape = RoundedCornerShape(3.dp)
 
@@ -68,8 +68,19 @@ fun MacroProgress(
         Text(
             text = "${formatKcal(current)} / ${formatKcal(goal)} $unit",
             style = MaterialTheme.typography.labelMedium,
-            color = if (over) AppColors.over else MaterialTheme.colorScheme.onSurface,
+            // colorScheme.error: same red as AppColors.over in the dark theme, readable on light backgrounds
+            color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
     }
 }
+
+/** Bar fill 0…1 (0 for a missing goal or invalid numbers). */
+internal fun macroProgressFraction(current: Double, goal: Double): Float {
+    if (!(goal > 0.0) || !current.isFinite() || goal.isInfinite()) return 0f
+    return (current / goal).toFloat().coerceIn(0f, 1f)
+}
+
+/** More than 5 % above the goal. */
+internal fun isOverGoal(current: Double, goal: Double): Boolean =
+    goal > 0.0 && goal.isFinite() && current.isFinite() && current > goal * 1.05

@@ -27,7 +27,8 @@ class RecipeRepository(private val db: AppDatabase) {
 
     /**
      * Inserts (id == 0) or updates the recipe and replaces ALL its ingredients (in list order)
-     * in one transaction. Returns the recipe id.
+     * in one transaction. Returns the recipe id. A recipe whose id no longer exists (deleted in the
+     * meantime) is inserted again with that id. Negative or non-finite ingredient grams are stored as 0.
      */
     suspend fun save(recipe: RecipeEntity, ingredients: List<RecipeIngredientEntity>): Long =
         db.withTransaction {
@@ -36,7 +37,7 @@ class RecipeRepository(private val db: AppDatabase) {
                 portions = recipe.portions.coerceAtLeast(1),
                 note = recipe.note?.trim()?.takeIf { it.isNotEmpty() },
             )
-            val id = if (normalized.id == 0L) {
+            val id = if (normalized.id == 0L || dao.getRecipeEntity(normalized.id) == null) {
                 dao.insertRecipe(normalized)
             } else {
                 dao.updateRecipe(normalized)
@@ -46,7 +47,12 @@ class RecipeRepository(private val db: AppDatabase) {
             if (ingredients.isNotEmpty()) {
                 dao.insertIngredients(
                     ingredients.mapIndexed { index, ingredient ->
-                        ingredient.copy(id = 0, recipeId = id, sortIndex = index)
+                        ingredient.copy(
+                            id = 0,
+                            recipeId = id,
+                            grams = ingredient.grams.takeIf { it.isFinite() && it > 0.0 } ?: 0.0,
+                            sortIndex = index,
+                        )
                     },
                 )
             }
@@ -61,14 +67,16 @@ class RecipeRepository(private val db: AppDatabase) {
         copy(ingredients = ingredients.sortedWith(compareBy({ it.ingredient.sortIndex }, { it.ingredient.id })))
 
     companion object {
-        /** Ingredients whose food no longer exists (food == null) are skipped. */
+        /** Ingredients whose food no longer exists (food == null) or without a positive amount are skipped. */
         fun nutritionOf(r: RecipeWithIngredients): RecipeNutrition {
             var grams = 0.0
             var total = Nutrition.ZERO
             for (item in r.ingredients) {
                 val food = item.food ?: continue
-                grams += item.ingredient.grams
-                total += NutritionMath.forGrams(food, item.ingredient.grams)
+                val g = item.ingredient.grams
+                if (!g.isFinite() || g <= 0.0) continue
+                grams += g
+                total += NutritionMath.forGrams(food, g)
             }
             val portions = r.recipe.portions.coerceAtLeast(1)
             return RecipeNutrition(

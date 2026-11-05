@@ -13,7 +13,7 @@ interface RecipeDao {
 
     /** Note: Room relations are unordered; [de.kalorienkompass.data.repo.RecipeRepository] sorts ingredients by sortIndex. */
     @Transaction
-    @Query("SELECT * FROM recipes ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM recipes ORDER BY name COLLATE NOCASE ASC, id ASC")
     fun observeAll(): Flow<List<RecipeWithIngredients>>
 
     @Transaction
@@ -23,6 +23,10 @@ interface RecipeDao {
     @Transaction
     @Query("SELECT * FROM recipes WHERE id = :id")
     suspend fun getById(id: Long): RecipeWithIngredients?
+
+    /** The recipe row only (without ingredients). */
+    @Query("SELECT * FROM recipes WHERE id = :id")
+    suspend fun getRecipeEntity(id: Long): RecipeEntity?
 
     @Insert
     suspend fun insertRecipe(recipe: RecipeEntity): Long

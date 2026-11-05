@@ -1,5 +1,6 @@
 package de.kalorienkompass.data.repo
 
+import androidx.room.withTransaction
 import de.kalorienkompass.data.db.AppDatabase
 import de.kalorienkompass.data.db.DailyActivityEntity
 import de.kalorienkompass.data.model.DataSource
@@ -8,6 +9,8 @@ import java.time.LocalDate
 
 /**
  * Daily steps. Priority of sources: MANUAL > HEALTH_CONNECT > SENSOR.
+ * Every read-check-write runs in one transaction, so a Health Connect sync and a sensor reading
+ * running at the same time cannot overwrite a value of higher priority.
  */
 class ActivityRepository(private val db: AppDatabase) {
 
@@ -31,39 +34,47 @@ class ActivityRepository(private val db: AppDatabase) {
 
     /** Skipped if the day was entered manually. */
     suspend fun upsertFromHealthConnect(date: LocalDate, steps: Long, activeKcal: Double?) {
-        val existing = dao.get(date)
-        if (existing?.source == DataSource.MANUAL) return
-        // Health Connect without any data must not wipe steps that were already counted by the sensor.
-        if (existing != null && steps <= 0L && activeKcal == null && existing.steps > 0L) return
-        if (existing != null &&
-            existing.source == DataSource.HEALTH_CONNECT &&
-            existing.steps == steps &&
-            existing.activeKcal == activeKcal
-        ) {
-            return
+        val kcal = activeKcal?.takeIf { it.isFinite() && it >= 0.0 }
+        val safeSteps = steps.coerceAtLeast(0L)
+        db.withTransaction {
+            val existing = dao.get(date)
+            when {
+                existing?.source == DataSource.MANUAL -> Unit
+                // Health Connect without any data must not wipe steps that were already counted (e.g. by the sensor).
+                existing != null && safeSteps == 0L && kcal == null && existing.steps > 0L -> Unit
+                existing != null &&
+                    existing.source == DataSource.HEALTH_CONNECT &&
+                    existing.steps == safeSteps &&
+                    existing.activeKcal == kcal -> Unit
+                else -> dao.upsert(
+                    DailyActivityEntity(
+                        date = date,
+                        steps = safeSteps,
+                        activeKcal = kcal,
+                        source = DataSource.HEALTH_CONNECT,
+                    ),
+                )
+            }
         }
-        dao.upsert(
-            DailyActivityEntity(
-                date = date,
-                steps = steps.coerceAtLeast(0L),
-                activeKcal = activeKcal,
-                source = DataSource.HEALTH_CONNECT,
-            ),
-        )
     }
 
     /** Skipped if the day was entered manually or comes from Health Connect. */
     suspend fun upsertFromSensor(date: LocalDate, steps: Long) {
-        val existing = dao.get(date)
-        if (existing != null && existing.source != DataSource.SENSOR) return
-        if (existing != null && existing.steps == steps) return
-        dao.upsert(
-            DailyActivityEntity(
-                date = date,
-                steps = steps.coerceAtLeast(0L),
-                activeKcal = null,
-                source = DataSource.SENSOR,
-            ),
-        )
+        val safeSteps = steps.coerceAtLeast(0L)
+        db.withTransaction {
+            val existing = dao.get(date)
+            when {
+                existing != null && existing.source != DataSource.SENSOR -> Unit
+                existing != null && existing.steps == safeSteps -> Unit
+                else -> dao.upsert(
+                    DailyActivityEntity(
+                        date = date,
+                        steps = safeSteps,
+                        activeKcal = null,
+                        source = DataSource.SENSOR,
+                    ),
+                )
+            }
+        }
     }
 }

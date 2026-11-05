@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -148,13 +150,7 @@ fun AppNavHost(
             }
 
             // ---- diary ----
-            composable(
-                route = Routes.MEAL,
-                arguments = listOf(
-                    navArgument("date") { type = NavType.LongType },
-                    navArgument("meal") { type = NavType.StringType },
-                ),
-            ) { entry ->
+            composable(route = Routes.MEAL, arguments = NavArguments.MEAL) { entry ->
                 val args = entry.arguments
                 MealDetailScreen(
                     navController,
@@ -164,14 +160,7 @@ fun AppNavHost(
             }
 
             // ---- food ----
-            composable(
-                route = Routes.FOOD_SEARCH,
-                arguments = listOf(
-                    navArgument("date") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("meal") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("pick") { type = NavType.BoolType; defaultValue = false },
-                ),
-            ) { entry ->
+            composable(route = Routes.FOOD_SEARCH, arguments = NavArguments.FOOD_SEARCH) { entry ->
                 val args = entry.arguments
                 FoodSearchScreen(
                     navController,
@@ -180,14 +169,7 @@ fun AppNavHost(
                     args.flag("pick"),
                 )
             }
-            composable(
-                route = Routes.BARCODE,
-                arguments = listOf(
-                    navArgument("date") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("meal") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("pick") { type = NavType.BoolType; defaultValue = false },
-                ),
-            ) { entry ->
+            composable(route = Routes.BARCODE, arguments = NavArguments.BARCODE) { entry ->
                 val args = entry.arguments
                 BarcodeScanScreen(
                     navController,
@@ -196,13 +178,7 @@ fun AppNavHost(
                     args.flag("pick"),
                 )
             }
-            composable(
-                route = Routes.AI_PHOTO,
-                arguments = listOf(
-                    navArgument("date") { type = NavType.LongType },
-                    navArgument("meal") { type = NavType.StringType },
-                ),
-            ) { entry ->
+            composable(route = Routes.AI_PHOTO, arguments = NavArguments.AI_PHOTO) { entry ->
                 val args = entry.arguments
                 AiPhotoScreen(
                     navController,
@@ -210,15 +186,7 @@ fun AppNavHost(
                     args.optMeal("meal") ?: MealType.forTimeOfDay(),
                 )
             }
-            composable(
-                route = Routes.FOOD_DETAIL,
-                arguments = listOf(
-                    navArgument("foodId") { type = NavType.LongType },
-                    navArgument("date") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("meal") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("pick") { type = NavType.BoolType; defaultValue = false },
-                ),
-            ) { entry ->
+            composable(route = Routes.FOOD_DETAIL, arguments = NavArguments.FOOD_DETAIL) { entry ->
                 val args = entry.arguments
                 FoodDetailScreen(
                     navController,
@@ -228,16 +196,7 @@ fun AppNavHost(
                     args.flag("pick"),
                 )
             }
-            composable(
-                route = Routes.CUSTOM_FOOD,
-                arguments = listOf(
-                    navArgument("foodId") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("barcode") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("date") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("meal") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("pick") { type = NavType.BoolType; defaultValue = false },
-                ),
-            ) { entry ->
+            composable(route = Routes.CUSTOM_FOOD, arguments = NavArguments.CUSTOM_FOOD) { entry ->
                 val args = entry.arguments
                 CustomFoodEditScreen(
                     navController,
@@ -250,22 +209,10 @@ fun AppNavHost(
             }
 
             // ---- recipes ----
-            composable(
-                route = Routes.RECIPE_EDIT,
-                arguments = listOf(
-                    navArgument("recipeId") { type = NavType.LongType; defaultValue = -1L },
-                ),
-            ) { entry ->
+            composable(route = Routes.RECIPE_EDIT, arguments = NavArguments.RECIPE_EDIT) { entry ->
                 RecipeEditScreen(navController, entry.arguments.optId("recipeId"))
             }
-            composable(
-                route = Routes.RECIPE_DETAIL,
-                arguments = listOf(
-                    navArgument("recipeId") { type = NavType.LongType },
-                    navArgument("date") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("meal") { type = NavType.StringType; defaultValue = "" },
-                ),
-            ) { entry ->
+            composable(route = Routes.RECIPE_DETAIL, arguments = NavArguments.RECIPE_DETAIL) { entry ->
                 val args = entry.arguments
                 RecipeDetailScreen(
                     navController,
@@ -276,15 +223,10 @@ fun AppNavHost(
             }
 
             // ---- progress ----
-            composable(
-                route = Routes.MEASUREMENT_HISTORY,
-                arguments = listOf(
-                    navArgument("type") { type = NavType.StringType },
-                ),
-            ) { entry ->
+            composable(route = Routes.MEASUREMENT_HISTORY, arguments = NavArguments.MEASUREMENT_HISTORY) { entry ->
                 MeasurementHistoryScreen(
                     navController,
-                    MeasurementType.fromName(entry.arguments?.getString("type")) ?: MeasurementType.WEIGHT,
+                    NavArgs.measurementType(entry.arguments?.getString("type")) ?: MeasurementType.WEIGHT,
                 )
             }
 
@@ -315,16 +257,7 @@ private fun AppBottomBar(navController: NavHostController, currentRoute: String?
             NavigationBarItem(
                 selected = currentRoute == tab.route,
                 onClick = {
-                    if (currentRoute != tab.route) {
-                        navController.navigate(tab.route) {
-                            // The diary is always the root of the back stack (onboarding pops itself).
-                            popUpTo(Routes.DIARY) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    if (currentRoute != tab.route) navController.navigateToTab(tab.route)
                 },
                 icon = { Icon(tab.icon, contentDescription = null) },
                 label = { Text(tab.label, maxLines = 1) },
@@ -340,20 +273,75 @@ private fun AppBottomBar(navController: NavHostController, currentRoute: String?
     }
 }
 
-// ---- argument helpers (absent optional values are -1L / "" / false) ----
-
-private fun Bundle?.optDate(key: String): LocalDate? {
-    val value = this?.getLong(key, -1L) ?: -1L
-    return if (value == -1L) null else LocalDate.ofEpochDay(value)
+/**
+ * Standard bottom-tab navigation (also usable for links like "Mehr" → [Routes.PROGRESS]):
+ * pops back to the diary root while saving the current tab's back stack, never stacks the same
+ * tab twice and restores the target tab's saved state.
+ */
+fun NavController.navigateToTab(route: String) {
+    val rootId = tabRootDestinationId()
+    navigate(route) {
+        popUpTo(rootId) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
-private fun Bundle?.optId(key: String): Long? {
-    val value = this?.getLong(key, -1L) ?: -1L
-    return if (value <= 0L) null else value
+/**
+ * The diary is the root of the back stack (the onboarding pops itself when it navigates to the
+ * diary). Falls back to the graph's start destination if the diary is not on the back stack.
+ */
+private fun NavController.tabRootDestinationId(): Int =
+    try {
+        getBackStackEntry(Routes.DIARY).destination.id
+    } catch (e: IllegalArgumentException) {
+        graph.findStartDestination().id
+    }
+
+// ---- argument definitions & helpers (absent optional values are -1L / "" / false, see [NavArgs]) ----
+
+/** Argument definitions of the routes in [Routes] (shared by [AppNavHost] and the navigation tests). */
+internal object NavArguments {
+    private fun requiredLong(name: String) = navArgument(name) { type = NavType.LongType }
+    private fun requiredString(name: String) = navArgument(name) { type = NavType.StringType }
+    private fun optionalLong(name: String) = navArgument(name) {
+        type = NavType.LongType
+        defaultValue = NavArgs.ABSENT_LONG
+    }
+    private fun optionalString(name: String) = navArgument(name) {
+        type = NavType.StringType
+        defaultValue = ""
+    }
+    private fun flag(name: String) = navArgument(name) {
+        type = NavType.BoolType
+        defaultValue = false
+    }
+
+    val MEAL = listOf(requiredLong("date"), requiredString("meal"))
+    val FOOD_SEARCH = listOf(optionalLong("date"), optionalString("meal"), flag("pick"))
+    val BARCODE = listOf(optionalLong("date"), optionalString("meal"), flag("pick"))
+    val AI_PHOTO = listOf(requiredLong("date"), requiredString("meal"))
+    val FOOD_DETAIL = listOf(requiredLong("foodId"), optionalLong("date"), optionalString("meal"), flag("pick"))
+    val CUSTOM_FOOD = listOf(
+        optionalLong("foodId"),
+        optionalString("barcode"),
+        optionalLong("date"),
+        optionalString("meal"),
+        flag("pick"),
+    )
+    val RECIPE_EDIT = listOf(optionalLong("recipeId"))
+    val RECIPE_DETAIL = listOf(requiredLong("recipeId"), optionalLong("date"), optionalString("meal"))
+    val MEASUREMENT_HISTORY = listOf(requiredString("type"))
 }
 
-private fun Bundle?.optMeal(key: String): MealType? = MealType.fromName(this?.getString(key))
+internal fun Bundle?.optDate(key: String): LocalDate? = NavArgs.date(this?.getLong(key, NavArgs.ABSENT_LONG))
 
-private fun Bundle?.optString(key: String): String? = this?.getString(key)?.takeIf { it.isNotBlank() }
+internal fun Bundle?.optId(key: String): Long? = NavArgs.id(this?.getLong(key, NavArgs.ABSENT_LONG))
 
-private fun Bundle?.flag(key: String): Boolean = this?.getBoolean(key, false) ?: false
+internal fun Bundle?.optMeal(key: String): MealType? = NavArgs.meal(this?.getString(key))
+
+internal fun Bundle?.optString(key: String): String? = NavArgs.text(this?.getString(key))
+
+internal fun Bundle?.flag(key: String): Boolean = this?.getBoolean(key, false) ?: false

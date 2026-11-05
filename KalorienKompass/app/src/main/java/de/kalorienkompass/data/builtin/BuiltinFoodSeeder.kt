@@ -12,7 +12,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Format of `assets/foods_de.json`. All values per 100 g (or 100 ml). */
@@ -40,18 +45,22 @@ data class BuiltinFoodJson(
 ) {
     fun toEntity(): FoodEntity = FoodEntity(
         name = name.trim(),
-        kcal = kcal.coerceAtLeast(0.0),
-        protein = protein.coerceAtLeast(0.0),
-        carbs = carbs.coerceAtLeast(0.0),
-        fat = fat.coerceAtLeast(0.0),
-        sugar = sugar?.coerceAtLeast(0.0),
-        fiber = fiber?.coerceAtLeast(0.0),
-        salt = salt?.coerceAtLeast(0.0),
-        unit = if (unit.equals("ml", ignoreCase = true)) "ml" else "g",
-        portions = portions.filter { it.name.isNotBlank() && it.grams > 0.0 },
+        kcal = kcal.sanitized(),
+        protein = protein.sanitized(),
+        carbs = carbs.sanitized(),
+        fat = fat.sanitized(),
+        sugar = sugar?.sanitized(),
+        fiber = fiber?.sanitized(),
+        salt = salt?.sanitized(),
+        unit = if (unit.trim().equals("ml", ignoreCase = true)) "ml" else "g",
+        portions = portions
+            .filter { it.name.isNotBlank() && it.grams.isFinite() && it.grams > 0.0 }
+            .map { it.copy(name = it.name.trim()) },
         source = FoodSource.BUILTIN,
         category = category?.trim()?.takeIf { it.isNotEmpty() },
     )
+
+    private fun Double.sanitized(): Double = if (isFinite() && this > 0.0) this else 0.0
 }
 
 /**
@@ -59,20 +68,26 @@ data class BuiltinFoodJson(
  *
  * Runs when the stored seed version is lower than the JSON version (or no built-in food exists).
  * New names are inserted; existing BUILTIN rows are updated by name, keeping id, favorite flag
- * and usage statistics (so diary/recipe references stay valid).
+ * and usage statistics (so diary/recipe references stay valid). Idempotent: concurrent calls
+ * (also from different instances) are serialized and the existing rows are re-read inside the
+ * database transaction, so no food is ever inserted twice. Always runs on [Dispatchers.IO].
  */
 class BuiltinFoodSeeder(
     private val context: Context,
     private val db: AppDatabase,
     private val json: Json,
 ) {
-    private val mutex = Mutex()
-
+    /** Never throws (except cancellation); failures are logged. */
     suspend fun seedIfNeeded() {
+        seedIfNeeded { context.assets.open(ASSET_FILE).bufferedReader(Charsets.UTF_8).use { it.readText() } }
+    }
+
+    /** [readJson] supplies the content of `foods_de.json` (called on [Dispatchers.IO]). */
+    internal suspend fun seedIfNeeded(readJson: () -> String) {
         withContext(Dispatchers.IO) {
-            mutex.withLock {
+            SEED_MUTEX.withLock {
                 try {
-                    seed()
+                    seed(readJson())
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -82,8 +97,7 @@ class BuiltinFoodSeeder(
         }
     }
 
-    private suspend fun seed() {
-        val text = context.assets.open(ASSET_FILE).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    private suspend fun seed(text: String) {
         val file = parse(text, json)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val storedVersion = prefs.getInt(KEY_VERSION, 0)
@@ -94,7 +108,12 @@ class BuiltinFoodSeeder(
             .filter { it.name.isNotBlank() }
             .map { it.toEntity() }
             .distinctBy { it.name }
+        if (items.isEmpty()) {
+            Log.w(TAG, "No valid built-in foods in $ASSET_FILE")
+            return
+        }
 
+        var inserted = 0
         db.withTransaction {
             val existingByName = dao.getBySource(FoodSource.BUILTIN).associateBy { it.name }
             val toInsert = ArrayList<FoodEntity>()
@@ -103,23 +122,24 @@ class BuiltinFoodSeeder(
                 if (existing == null) {
                     toInsert += item
                 } else {
-                    dao.update(
-                        item.copy(
-                            id = existing.id,
-                            barcode = existing.barcode,
-                            imageUrl = existing.imageUrl,
-                            isFavorite = existing.isFavorite,
-                            lastUsedAt = existing.lastUsedAt,
-                            useCount = existing.useCount,
-                            createdAt = existing.createdAt,
-                        ),
+                    val updated = item.copy(
+                        id = existing.id,
+                        barcode = existing.barcode,
+                        imageUrl = existing.imageUrl,
+                        isFavorite = existing.isFavorite,
+                        lastUsedAt = existing.lastUsedAt,
+                        useCount = existing.useCount,
+                        createdAt = existing.createdAt,
                     )
+                    if (updated != existing) dao.update(updated)
                 }
             }
             if (toInsert.isNotEmpty()) dao.insertAll(toInsert)
+            inserted = toInsert.size
         }
-        prefs.edit().putInt(KEY_VERSION, file.version).apply()
-        Log.i(TAG, "Built-in foods seeded: version ${file.version}, ${items.size} foods")
+        // commit() (not apply()): the version must be on disk before we report success.
+        prefs.edit().putInt(KEY_VERSION, file.version).commit()
+        Log.i(TAG, "Built-in foods seeded: version ${file.version}, ${items.size} foods, $inserted new")
     }
 
     companion object {
@@ -128,12 +148,35 @@ class BuiltinFoodSeeder(
         private const val PREFS_NAME = "builtin_foods"
         private const val KEY_VERSION = "seed_version"
 
+        /** Process-wide: serializes all seeder instances (app start, backup import, tests). */
+        private val SEED_MUTEX = Mutex()
+
         private val defaultJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
-        /** Parses the content of `foods_de.json` (also usable from JVM unit tests). */
+        /**
+         * Parses the content of `foods_de.json` (also usable from JVM unit tests). Unknown fields are
+         * ignored and single malformed food entries are skipped instead of failing the whole file.
+         * Throws [kotlinx.serialization.SerializationException] / [IllegalArgumentException] only if the
+         * text is not a JSON object.
+         */
         fun parse(text: String, json: Json = defaultJson): BuiltinFoodsFile {
-            val lenient = Json(from = json) { ignoreUnknownKeys = true }
-            return lenient.decodeFromString(BuiltinFoodsFile.serializer(), text)
+            val lenient = Json(from = json) {
+                ignoreUnknownKeys = true
+                isLenient = true
+                coerceInputValues = true
+            }
+            val root = lenient.parseToJsonElement(text).jsonObject
+            val version = (root["version"] as? JsonPrimitive)?.intOrNull ?: 1
+            val foods = (root["foods"] as? JsonArray).orEmpty().mapNotNull { element ->
+                try {
+                    lenient.decodeFromJsonElement(BuiltinFoodJson.serializer(), element)
+                } catch (e: SerializationException) {
+                    null
+                } catch (e: IllegalArgumentException) {
+                    null
+                }
+            }
+            return BuiltinFoodsFile(version = version, foods = foods)
         }
     }
 }

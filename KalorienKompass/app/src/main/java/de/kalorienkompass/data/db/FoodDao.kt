@@ -20,28 +20,35 @@ interface FoodDao {
     @Query("SELECT * FROM foods WHERE barcode = :code LIMIT 1")
     suspend fun getByBarcode(code: String): FoodEntity?
 
-    /** name/brand contains [query]; prefix matches first, then most used, then shorter names. */
+    /**
+     * name/brand contains [query] (a plain substring: `%`, `_` and `\` in the user's input are matched
+     * literally, not as LIKE wildcards; ASCII letters case-insensitive); prefix matches first,
+     * then most used, then shorter names.
+     */
     @Query(
         """
         SELECT * FROM foods
-        WHERE name LIKE '%' || :query || '%' OR brand LIKE '%' || :query || '%'
+        WHERE name LIKE '%' || replace(replace(replace(:query, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
+           OR brand LIKE '%' || replace(replace(replace(:query, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
         ORDER BY
-            CASE WHEN name LIKE :query || '%' THEN 0 ELSE 1 END,
+            CASE WHEN name LIKE replace(replace(replace(:query, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
+                THEN 0 ELSE 1 END,
             useCount DESC,
             LENGTH(name) ASC,
-            name COLLATE NOCASE ASC
+            name COLLATE NOCASE ASC,
+            id ASC
         LIMIT :limit
         """,
     )
     suspend fun search(query: String, limit: Int): List<FoodEntity>
 
-    @Query("SELECT * FROM foods WHERE lastUsedAt IS NOT NULL ORDER BY lastUsedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM foods WHERE lastUsedAt IS NOT NULL ORDER BY lastUsedAt DESC, id DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<FoodEntity>>
 
-    @Query("SELECT * FROM foods WHERE isFavorite = 1 ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM foods WHERE isFavorite = 1 ORDER BY name COLLATE NOCASE ASC, id ASC")
     fun observeFavorites(): Flow<List<FoodEntity>>
 
-    @Query("SELECT * FROM foods WHERE source = :source ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM foods WHERE source = :source ORDER BY name COLLATE NOCASE ASC, id ASC")
     fun observeBySource(source: FoodSource): Flow<List<FoodEntity>>
 
     @Query("SELECT * FROM foods ORDER BY id ASC")
@@ -54,7 +61,10 @@ interface FoodDao {
     suspend fun countBySource(source: FoodSource): Int
 
     /** Used to de-duplicate cached remote products that have no barcode. */
-    @Query("SELECT * FROM foods WHERE source = :source AND name = :name AND IFNULL(brand, '') = :brand LIMIT 1")
+    @Query(
+        "SELECT * FROM foods WHERE source = :source AND name = :name AND IFNULL(brand, '') = :brand " +
+            "ORDER BY id ASC LIMIT 1",
+    )
     suspend fun findBySourceNameAndBrand(source: FoodSource, name: String, brand: String): FoodEntity?
 
     @Insert

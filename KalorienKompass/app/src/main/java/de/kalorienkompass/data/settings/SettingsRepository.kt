@@ -2,6 +2,7 @@ package de.kalorienkompass.data.settings
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -15,11 +16,21 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.io.IOException
 
-/** General settings (included in Android backup). */
-private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+/** General settings (included in Android backup): file `files/datastore/settings.preferences_pb`. */
+private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = SettingsRepository.SETTINGS_STORE_NAME,
+    // A corrupt file (e.g. after a crash while writing) is replaced by defaults instead of failing every read/write.
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
-/** Secrets (API key). File "secrets.preferences_pb" is excluded from Android backup and JSON export. */
-private val Context.secretsDataStore: DataStore<Preferences> by preferencesDataStore(name = "secrets")
+/**
+ * Secrets (API key): file `files/datastore/secrets.preferences_pb`, excluded from Android backup
+ * (res/xml/backup_rules.xml, res/xml/data_extraction_rules.xml) and from the JSON export.
+ */
+private val Context.secretsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = SettingsRepository.SECRETS_STORE_NAME,
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Each settings object is stored as ONE JSON string preference. Decoding failures fall back to defaults.
@@ -30,11 +41,7 @@ class SettingsRepository(context: Context, json: Json) {
     private val store: DataStore<Preferences> = appContext.settingsDataStore
     private val secrets: DataStore<Preferences> = appContext.secretsDataStore
 
-    private val settingsJson: Json = Json(from = json) {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-        coerceInputValues = true
-    }
+    private val settingsJson: Json = settingsJson(json)
 
     private val storeData: Flow<Preferences> = store.data.catch { e ->
         if (e is IOException) emit(emptyPreferences()) else throw e
@@ -100,19 +107,35 @@ class SettingsRepository(context: Context, json: Json) {
         }
     }
 
-    private fun <T> decode(raw: String?, serializer: KSerializer<T>, default: T): T {
-        if (raw.isNullOrBlank()) return default
-        return try {
-            settingsJson.decodeFromString(serializer, raw)
-        } catch (e: Exception) {
-            default
-        }
-    }
+    private fun <T> decode(raw: String?, serializer: KSerializer<T>, default: T): T =
+        decodeSettingOrDefault(settingsJson, raw, serializer, default)
 
-    private companion object {
-        val KEY_PROFILE = stringPreferencesKey("user_profile")
-        val KEY_GOALS = stringPreferencesKey("nutrition_goals")
-        val KEY_SETTINGS = stringPreferencesKey("app_settings")
-        val KEY_API_KEY = stringPreferencesKey("anthropic_api_key")
+    companion object {
+        /** DataStore file names (`files/datastore/<name>.preferences_pb`). */
+        const val SETTINGS_STORE_NAME = "settings"
+        const val SECRETS_STORE_NAME = "secrets"
+
+        private val KEY_PROFILE = stringPreferencesKey("user_profile")
+        private val KEY_GOALS = stringPreferencesKey("nutrition_goals")
+        private val KEY_SETTINGS = stringPreferencesKey("app_settings")
+        private val KEY_API_KEY = stringPreferencesKey("anthropic_api_key")
+    }
+}
+
+/** Json used for the stored settings objects: unknown keys ignored, defaults encoded, invalid enum values → defaults. */
+internal fun settingsJson(base: Json): Json = Json(from = base) {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    coerceInputValues = true
+}
+
+/** Decodes one stored settings object; a missing, blank or undecodable value yields [default]. */
+internal fun <T> decodeSettingOrDefault(json: Json, raw: String?, serializer: KSerializer<T>, default: T): T {
+    if (raw.isNullOrBlank()) return default
+    return try {
+        json.decodeFromString(serializer, raw)
+    } catch (e: Exception) {
+        // SerializationException / IllegalArgumentException for corrupt or incompatible JSON
+        default
     }
 }

@@ -69,18 +69,40 @@ fun formatInput(v: Double, maxDecimals: Int = 2): String {
 
 private val DECIMAL_REGEX = Regex("^[+-]?(\\d+\\.?\\d*|\\.\\d+)$")
 
-/** Accepts "," or "." as decimal separator ("12,5", "12.5", "1.234,5"). Returns null if invalid. */
+/**
+ * Parses user input. Accepts "," or "." as decimal separator ("12,5", "12.5"), thousands
+ * separators in a valid grouping ("1.234,5", "1.234.567", "1,234.5"), surrounding/inner spaces
+ * (also non-breaking) and "−" as minus. Returns null if invalid ("", "-", "1,2,3", "1e5", "NaN", …).
+ * A single separator is always the decimal separator: "1.234" → 1.234.
+ */
 fun parseDecimal(s: String): Double? {
-    var t = s.trim().replace(" ", "").replace(" ", "")
+    var t = s.filterNot { it.isWhitespace() || it == '\u00A0' || it == '\u202F' }.replace('\u2212', '-')
     if (t.isEmpty()) return null
-    if (t.contains(',') && t.contains('.')) {
-        // German style with thousands dots: "1.234,5"
-        if (t.lastIndexOf('.') > t.lastIndexOf(',')) return null
-        t = t.replace(".", "")
+    val dots = t.count { it == '.' }
+    val commas = t.count { it == ',' }
+    t = when {
+        dots > 0 && commas > 0 -> {
+            // grouping + decimal separator: German "1.234,5" or English "1,234.5"
+            val decimal = if (t.lastIndexOf(',') > t.lastIndexOf('.')) ',' else '.'
+            val grouping = if (decimal == ',') '.' else ','
+            if (t.count { it == decimal } > 1 || !isValidGrouping(t.substringBefore(decimal), grouping)) return null
+            t.replace(grouping.toString(), "").replace(decimal, '.')
+        }
+        dots > 1 -> if (isValidGrouping(t, '.')) t.replace(".", "") else return null
+        commas > 1 -> if (isValidGrouping(t, ',')) t.replace(",", "") else return null
+        else -> t.replace(',', '.')
     }
-    t = t.replace(',', '.')
     if (!DECIMAL_REGEX.matches(t)) return null
     return t.toDoubleOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
+}
+
+/** "1.234.567" with [separator] '.': 1–3 leading digits, then groups of exactly 3 digits. */
+private fun isValidGrouping(integerPart: String, separator: Char): Boolean {
+    val groups = integerPart.removePrefix("+").removePrefix("-").split(separator)
+    if (groups.size < 2) return false
+    val first = groups.first()
+    return first.length in 1..3 && first.all { it in '0'..'9' } &&
+        groups.drop(1).all { group -> group.length == 3 && group.all { it in '0'..'9' } }
 }
 
 private val WEEKDAYS_SHORT = arrayOf("Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So.")

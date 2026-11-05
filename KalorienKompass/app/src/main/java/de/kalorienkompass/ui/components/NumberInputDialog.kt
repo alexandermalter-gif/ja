@@ -68,8 +68,12 @@ fun NumberInputDialog(
             OutlinedTextField(
                 value = field,
                 onValueChange = { input ->
-                    val ok = if (decimals) isAcceptableDecimalInput(input.text) else isAcceptableIntegerInput(input.text)
-                    if (ok) field = input
+                    val text = if (decimals) {
+                        sanitizeDecimalInput(old = field.text, new = input.text)
+                    } else {
+                        sanitizeIntegerInput(old = field.text, new = input.text)
+                    }
+                    if (text != null) field = if (text == input.text) input else input.copy(text = text)
                 },
                 singleLine = true,
                 suffix = { Text(suffix) },
